@@ -1,6 +1,6 @@
 # Maestro
 
-Maestro is a single-machine orchestration daemon that polls a tracker, prepares a git workspace, renders an agent prompt, runs a coding agent, and keeps enough local state to survive restart and avoid duplicate dispatch.
+Maestro is a single-machine orchestration daemon that polls a tracker, prepares the run environment, renders an agent prompt, runs an agent, and keeps enough local state to survive restart and avoid duplicate dispatch.
 
 The current build is a working POC. It is intentionally narrow in surface area, but the runtime now supports multiple sources, multiple agent mappings, and bounded parallel dispatch with local state and a terminal UI.
 
@@ -132,12 +132,3 @@ These keep logs, state, and workspaces under `demo/*/var/` so you can inspect an
 - Release checklist and packaging: [docs/release.md](/Users/tjohnson/repos/maestro/docs/release.md)
 - Test matrix: [TESTING.md](/Users/tjohnson/repos/maestro/TESTING.md)
 - Release notes: [CHANGELOG.md](/Users/tjohnson/repos/maestro/CHANGELOG.md)
-
-## POC Verdict
-
-If your goal is a real demo by tomorrow, the repo is already there. The fastest path is:
-
-1. Pick one tracker and one harness.
-2. Start from the matching sample config.
-3. Run the matching smoke script.
-4. Keep the known gaps small and explicit: Codex manual approval is still waiting on upstream behavior, and GitLab epic live coverage depends on having an epic-capable GitLab group available.
