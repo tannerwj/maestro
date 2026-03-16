@@ -1,0 +1,40 @@
+defaults:
+  poll_interval: 30s
+  max_concurrent_global: 1
+
+agent_packs_dir: ../agents
+
+user:
+  name: "Your Name"
+  linear_username: "your-linear-email-or-handle"
+
+sources:
+  - name: linear-triage
+    tracker: linear
+    connection:
+      token_env: MAESTRO_LINEAR_TOKEN
+      project: your-linear-project-name-or-id
+    repo: /absolute/path/or/repo-url.git
+    filter:
+      states: [Todo]
+      labels: [triage]
+    agent_type: triage
+    poll_interval: 30s
+
+agent_types:
+  - name: triage
+    agent_pack: triage
+    instance_name: triage-agent
+
+workspace:
+  root: ~/.local/share/maestro/workspaces
+
+state:
+  dir: ~/.local/state/maestro
+  retry_base: 10s
+  max_retry_backoff: 5m
+  max_attempts: 3
+
+logging:
+  level: info
+  dir: ~/.local/state/maestro/logs

@@ -1,0 +1,152 @@
+package orchestrator
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/tjohnson/maestro/internal/domain"
+	trackerbase "github.com/tjohnson/maestro/internal/tracker"
+)
+
+func (s *Service) reconcileActiveRun(ctx context.Context, polled []domain.Issue) {
+	s.mu.RLock()
+	if s.activeRun == nil {
+		s.mu.RUnlock()
+		return
+	}
+	run := *s.activeRun
+	s.mu.RUnlock()
+
+	current := findIssue(polled, run.Issue.ID)
+	if current == nil {
+		refreshed, err := s.tracker.Get(ctx, run.Issue.ID)
+		if err != nil {
+			s.recordEvent("warn", "reconcile get failed for %s: %v", run.Issue.Identifier, err)
+			return
+		}
+		current = &refreshed
+	}
+
+	s.updateRun(run.ID, func(r *domain.AgentRun) {
+		r.Issue = *current
+	})
+
+	switch {
+	case trackerbase.LifecycleLabelState(current.Labels) == trackerbase.LifecycleLabelDone:
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusDone, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, trackerbase.LifecycleLabelDone))
+	case trackerbase.LifecycleLabelState(current.Labels) == trackerbase.LifecycleLabelFailed:
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusFailed, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, trackerbase.LifecycleLabelFailed))
+	case trackerbase.IsTerminal(*current):
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusDone, fmt.Sprintf("issue %s became terminal in tracker", current.Identifier))
+	case !trackerbase.MatchesFilter(*current, s.source.Filter):
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusFailed, fmt.Sprintf("issue %s no longer matches source filter", current.Identifier))
+	}
+}
+
+func (s *Service) stopActiveRunFromTracker(ctx context.Context, runID string, status domain.RunStatus, reason string) {
+	s.mu.Lock()
+	if s.activeRun == nil || s.activeRun.ID != runID {
+		s.mu.Unlock()
+		return
+	}
+	if _, exists := s.pendingStops[runID]; exists {
+		s.mu.Unlock()
+		return
+	}
+	s.pendingStops[runID] = pendingStop{Status: status, Reason: reason}
+	s.mu.Unlock()
+
+	s.recordEvent("warn", "stopping run %s: %s", runID, reason)
+	if err := s.harness.Stop(ctx, runID); err != nil {
+		s.recordEvent("error", "stop run %s failed: %v", runID, err)
+	}
+}
+
+func (s *Service) applyTrackerLifecycle(ctx context.Context, issueID string, add []string, remove []string, comment string) {
+	for _, label := range remove {
+		if err := s.tracker.RemoveLifecycleLabel(ctx, issueID, label); err != nil {
+			s.recordEvent("warn", "remove lifecycle label %s on %s failed: %v", label, issueID, err)
+		}
+	}
+	for _, label := range add {
+		if err := s.tracker.AddLifecycleLabel(ctx, issueID, label); err != nil {
+			s.recordEvent("warn", "add lifecycle label %s on %s failed: %v", label, issueID, err)
+		}
+	}
+	if comment != "" {
+		if err := s.tracker.PostOperationalComment(ctx, issueID, comment); err != nil {
+			s.recordEvent("warn", "post operational comment on %s failed: %v", issueID, err)
+		}
+	}
+}
+
+func (s *Service) refreshStoredIssueTimestamp(ctx context.Context, issueID string) {
+	refreshed, err := s.tracker.Get(ctx, issueID)
+	if err != nil {
+		s.recordEvent("warn", "refresh tracker timestamp for %s failed: %v", issueID, err)
+		return
+	}
+
+	changed := false
+
+	s.mu.Lock()
+	if finished, ok := s.finished[issueID]; ok {
+		finished.IssueUpdatedAt = refreshed.UpdatedAt
+		s.finished[issueID] = finished
+		changed = true
+	}
+	if retry, ok := s.retryQueue[issueID]; ok {
+		retry.IssueUpdatedAt = refreshed.UpdatedAt
+		s.retryQueue[issueID] = retry
+		changed = true
+	}
+	s.mu.Unlock()
+
+	if changed {
+		_ = s.saveStateBestEffort()
+	}
+}
+
+func (s *Service) refreshActiveRunIssue(ctx context.Context, runID string) {
+	refreshed, err := s.refreshIssue(ctx, func(issue domain.Issue) bool {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return s.activeRun != nil && s.activeRun.ID == runID && s.activeRun.Issue.ID == issue.ID
+	})
+	if err != nil {
+		s.recordEvent("warn", "refresh active run %s failed: %v", runID, err)
+		return
+	}
+
+	s.updateRun(runID, func(r *domain.AgentRun) {
+		r.Issue = refreshed
+	})
+}
+
+func (s *Service) refreshIssue(ctx context.Context, accept func(domain.Issue) bool) (domain.Issue, error) {
+	s.mu.RLock()
+	if s.activeRun == nil {
+		s.mu.RUnlock()
+		return domain.Issue{}, fmt.Errorf("no active run")
+	}
+	issueID := s.activeRun.Issue.ID
+	s.mu.RUnlock()
+
+	refreshed, err := s.tracker.Get(ctx, issueID)
+	if err != nil {
+		return domain.Issue{}, err
+	}
+	if !accept(refreshed) {
+		return domain.Issue{}, fmt.Errorf("active run changed while refreshing %s", issueID)
+	}
+	return refreshed, nil
+}
+
+func findIssue(issues []domain.Issue, issueID string) *domain.Issue {
+	for i := range issues {
+		if issues[i].ID == issueID {
+			return &issues[i]
+		}
+	}
+	return nil
+}

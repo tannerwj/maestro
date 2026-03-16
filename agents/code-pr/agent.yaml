@@ -1,0 +1,18 @@
+name: code-pr
+description: General code-change agent for tracker-backed repository work.
+instance_name: code-pr
+harness: claude-code
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+max_concurrent: 1
+tools:
+  - git
+  - repo test commands
+  - existing build scripts
+skills:
+  - narrow diffs
+  - repository conventions
+  - verification before handoff
+context_files:
+  - context.md

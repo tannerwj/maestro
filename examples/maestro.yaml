@@ -1,0 +1,35 @@
+defaults:
+  poll_interval: 30s
+  max_concurrent_global: 1
+
+agent_packs_dir: ../agents
+
+user:
+  name: "TJ"
+  gitlab_username: "tjohnson"
+
+sources:
+  - name: platform-dev
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.example.com
+      token_env: GITLAB_TOKEN
+      project: team/project
+    filter:
+      labels: [agent:ready]
+      assignee: $MAESTRO_USER
+    agent_type: code-pr
+    poll_interval: 30s
+
+agent_types:
+  - name: code-pr
+    agent_pack: code-pr
+    instance_name: coder
+    approval_policy: auto
+
+workspace:
+  root: ~/.local/share/maestro/workspaces
+
+logging:
+  level: info
+  dir: ~/.local/state/maestro/logs

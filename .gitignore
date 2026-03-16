@@ -1,0 +1,7 @@
+logs/
+state/
+workspaces/
+bin/
+dist/
+.claude/
+.DS_Store

@@ -1,0 +1,49 @@
+defaults:
+  poll_interval: 30s
+  max_concurrent_global: 1
+  stall_timeout: 10m
+
+agent_packs_dir: ../agents
+
+user:
+  name: "Your Name"
+  gitlab_username: "your-gitlab-username"
+
+sources:
+  - name: gitlab-poc
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.com
+      token_env: MAESTRO_GITLAB_TOKEN
+      project: your-group/your-project
+    filter:
+      labels: [agent:ready]
+      assignee: $MAESTRO_USER
+    agent_type: code-pr
+    poll_interval: 30s
+
+agent_types:
+  - name: code-pr
+    agent_pack: code-pr
+    instance_name: claude-coder
+    approval_policy: auto
+    stall_timeout: 10m
+
+workspace:
+  root: ~/.local/share/maestro/workspaces
+
+state:
+  dir: ~/.local/state/maestro
+  retry_base: 10s
+  max_retry_backoff: 5m
+  max_attempts: 3
+
+hooks:
+  timeout: 30s
+  # after_create: ./scripts/after_create.sh
+  # before_run: ./scripts/before_run.sh
+  # after_run: ./scripts/after_run.sh
+
+logging:
+  level: info
+  dir: ~/.local/state/maestro/logs

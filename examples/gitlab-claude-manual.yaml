@@ -1,0 +1,41 @@
+defaults:
+  poll_interval: 30s
+  max_concurrent_global: 1
+
+agent_packs_dir: ../agents
+
+user:
+  name: "Your Name"
+  gitlab_username: "your-gitlab-username"
+
+sources:
+  - name: gitlab-poc
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.com
+      token_env: MAESTRO_GITLAB_TOKEN
+      project: your-group/your-project
+    filter:
+      labels: [agent:ready]
+      assignee: $MAESTRO_USER
+    agent_type: repo-maintainer
+    poll_interval: 30s
+
+agent_types:
+  - name: repo-maintainer
+    agent_pack: repo-maintainer
+    instance_name: claude-reviewer
+    approval_policy: manual
+
+workspace:
+  root: ~/.local/share/maestro/workspaces
+
+state:
+  dir: ~/.local/state/maestro
+  retry_base: 10s
+  max_retry_backoff: 5m
+  max_attempts: 3
+
+logging:
+  level: info
+  dir: ~/.local/state/maestro/logs

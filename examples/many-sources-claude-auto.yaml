@@ -1,0 +1,134 @@
+defaults:
+  poll_interval: 30s
+  max_concurrent_global: 3
+  stall_timeout: 10m
+
+agent_packs_dir: ../agents
+
+source_defaults:
+  gitlab:
+    connection:
+      base_url: https://gitlab.com
+      token_env: MAESTRO_GITLAB_TOKEN
+    filter:
+      assignee: $MAESTRO_USER
+    poll_interval: 15s
+  gitlab_epic:
+    connection:
+      base_url: https://gitlab.com
+      token_env: MAESTRO_GITLAB_TOKEN
+      group: your-group
+    repo: https://gitlab.com/your-group/your-project.git
+    issue_filter:
+      assignee: $MAESTRO_USER
+    poll_interval: 15s
+  linear:
+    connection:
+      token_env: MAESTRO_LINEAR_TOKEN
+    filter:
+      states: [Todo]
+      assignee: $MAESTRO_USER
+    repo: https://gitlab.com/your-group/your-project.git
+    poll_interval: 15s
+
+agent_defaults:
+  harness: claude-code
+  workspace: git-clone
+  approval_policy: auto
+  max_concurrent: 2
+
+user:
+  name: "Your Name"
+  gitlab_username: "your-gitlab-username"
+  linear_username: "you@example.com"
+
+sources:
+  - name: epic-platform
+    display_group: Planning
+    tags: [platform, exact-epic]
+    tracker: gitlab-epic
+    epic_filter:
+      iids: [1]
+    issue_filter:
+      labels: [agent:ready]
+    agent_type: code-pr
+
+  - name: epic-infra
+    display_group: Planning
+    tags: [infra]
+    tracker: gitlab-epic
+    epic_filter:
+      labels: [bucket:infra]
+    issue_filter:
+      labels: [agent:ready]
+    agent_type: repo-maintainer
+
+  - name: epic-growth
+    display_group: Planning
+    tags: [growth]
+    tracker: gitlab-epic
+    epic_filter:
+      labels: [bucket:growth]
+    issue_filter:
+      labels: [agent:ready]
+    agent_type: repo-maintainer
+
+  - name: gitlab-app
+    display_group: Delivery
+    tags: [app, backend]
+    tracker: gitlab
+    connection:
+      project: your-group/app-project
+    filter:
+      labels: [agent:ready]
+    agent_type: code-pr
+
+  - name: gitlab-ops
+    display_group: Delivery
+    tags: [ops]
+    tracker: gitlab
+    connection:
+      project: your-group/ops-project
+    filter:
+      labels: [ops:ready]
+    agent_type: repo-maintainer
+
+  - name: linear-product
+    display_group: Planning
+    tags: [product, triage]
+    tracker: linear
+    connection:
+      project: Product Roadmap
+    filter:
+      labels: [agent:ready]
+    agent_type: triage
+
+agent_types:
+  - name: code-pr
+    agent_pack: code-pr
+    instance_name: gitlab-coder
+
+  - name: repo-maintainer
+    agent_pack: repo-maintainer
+    instance_name: repo-maintainer
+
+  - name: triage
+    agent_pack: triage
+    instance_name: linear-triage
+
+workspace:
+  root: ~/.local/share/maestro/workspaces
+
+state:
+  dir: ~/.local/state/maestro
+  retry_base: 10s
+  max_retry_backoff: 5m
+  max_attempts: 3
+
+hooks:
+  timeout: 30s
+
+logging:
+  level: info
+  dir: ~/.local/state/maestro/logs
+  max_files: 20
