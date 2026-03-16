@@ -1,6 +1,6 @@
-logs/
-state/
-workspaces/
+/logs/
+/state/
+/workspaces/
 bin/
 dist/
 .claude/
