@@ -135,15 +135,15 @@ This is still valuable because it gives you one place to encode:
 
 The repo now ships with:
 
-- [agents/code-pr/agent.yaml](/Users/tjohnson/repos/maestro/agents/code-pr/agent.yaml)
-- [agents/repo-maintainer/agent.yaml](/Users/tjohnson/repos/maestro/agents/repo-maintainer/agent.yaml)
-- [agents/triage/agent.yaml](/Users/tjohnson/repos/maestro/agents/triage/agent.yaml)
+- [agents/code-pr/agent.yaml](../agents/code-pr/agent.yaml)
+- [agents/repo-maintainer/agent.yaml](../agents/repo-maintainer/agent.yaml)
+- [agents/triage/agent.yaml](../agents/triage/agent.yaml)
 
 Example configs:
 
-- [examples/gitlab-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-auto.yaml)
-- [examples/gitlab-repo-maintainer.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-repo-maintainer.yaml)
-- [examples/linear-triage.yaml](/Users/tjohnson/repos/maestro/examples/linear-triage.yaml)
+- [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml)
+- [examples/gitlab-repo-maintainer.yaml](../examples/gitlab-repo-maintainer.yaml)
+- [examples/linear-triage.yaml](../examples/linear-triage.yaml)
 
 ## Making Your Own Pack
 

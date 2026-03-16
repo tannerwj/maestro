@@ -34,7 +34,7 @@ The current build is a working POC. It is intentionally narrow in surface area, 
 
 ## Quick Start
 
-1. Copy a sample from [examples/gitlab-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-auto.yaml) or [examples/linear-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/linear-claude-auto.yaml).
+1. Copy a sample from [examples/gitlab-claude-auto.yaml](examples/gitlab-claude-auto.yaml) or [examples/linear-claude-auto.yaml](examples/linear-claude-auto.yaml).
 2. Set the required token env var referenced by `connection.token_env`.
 3. Keep `repo` URLs credential-free. Maestro injects tracker auth from `connection.token_env` and redacts token-shaped values from logs.
 4. Update the tracker project, filters, user fields, and `agent_packs_dir` if you move the built-in packs.
@@ -70,37 +70,37 @@ make smoke-many-sources
 
 ## Samples
 
-- GitLab + Claude auto: [examples/gitlab-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-auto.yaml)
-- GitLab + Claude manual: [examples/gitlab-claude-manual.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-manual.yaml)
-- GitLab + Codex auto: [examples/gitlab-codex-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-codex-auto.yaml)
-- GitLab epic + Claude auto: [examples/gitlab-epic-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-epic-claude-auto.yaml)
-- GitLab + repo-maintainer pack: [examples/gitlab-repo-maintainer.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-repo-maintainer.yaml)
-- Linear + Claude auto: [examples/linear-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/linear-claude-auto.yaml)
-- Linear + Claude manual: [examples/linear-claude-manual.yaml](/Users/tjohnson/repos/maestro/examples/linear-claude-manual.yaml)
-- Linear + Codex auto: [examples/linear-codex-auto.yaml](/Users/tjohnson/repos/maestro/examples/linear-codex-auto.yaml)
-- Linear + triage pack: [examples/linear-triage.yaml](/Users/tjohnson/repos/maestro/examples/linear-triage.yaml)
-- Multi-source GitLab project + GitLab epic + Linear: [examples/multi-source-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/multi-source-claude-auto.yaml)
-- Many sources with shared defaults: [examples/many-sources-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/many-sources-claude-auto.yaml)
+- GitLab + Claude auto: [examples/gitlab-claude-auto.yaml](examples/gitlab-claude-auto.yaml)
+- GitLab + Claude manual: [examples/gitlab-claude-manual.yaml](examples/gitlab-claude-manual.yaml)
+- GitLab + Codex auto: [examples/gitlab-codex-auto.yaml](examples/gitlab-codex-auto.yaml)
+- GitLab epic + Claude auto: [examples/gitlab-epic-claude-auto.yaml](examples/gitlab-epic-claude-auto.yaml)
+- GitLab + repo-maintainer pack: [examples/gitlab-repo-maintainer.yaml](examples/gitlab-repo-maintainer.yaml)
+- Linear + Claude auto: [examples/linear-claude-auto.yaml](examples/linear-claude-auto.yaml)
+- Linear + Claude manual: [examples/linear-claude-manual.yaml](examples/linear-claude-manual.yaml)
+- Linear + Codex auto: [examples/linear-codex-auto.yaml](examples/linear-codex-auto.yaml)
+- Linear + triage pack: [examples/linear-triage.yaml](examples/linear-triage.yaml)
+- Multi-source GitLab project + GitLab epic + Linear: [examples/multi-source-claude-auto.yaml](examples/multi-source-claude-auto.yaml)
+- Many sources with shared defaults: [examples/many-sources-claude-auto.yaml](examples/many-sources-claude-auto.yaml)
 
 Built-in agent packs:
 
-- Code change: [agents/code-pr/agent.yaml](/Users/tjohnson/repos/maestro/agents/code-pr/agent.yaml)
-- Repo maintainer: [agents/repo-maintainer/agent.yaml](/Users/tjohnson/repos/maestro/agents/repo-maintainer/agent.yaml)
-- Triage: [agents/triage/agent.yaml](/Users/tjohnson/repos/maestro/agents/triage/agent.yaml)
+- Code change: [agents/code-pr/agent.yaml](agents/code-pr/agent.yaml)
+- Repo maintainer: [agents/repo-maintainer/agent.yaml](agents/repo-maintainer/agent.yaml)
+- Triage: [agents/triage/agent.yaml](agents/triage/agent.yaml)
 
 ## Smoke Scripts
 
-- GitLab smoke: [scripts/smoke_gitlab.sh](/Users/tjohnson/repos/maestro/scripts/smoke_gitlab.sh)
-- Linear smoke: [scripts/smoke_linear.sh](/Users/tjohnson/repos/maestro/scripts/smoke_linear.sh)
-- Three-source smoke: [scripts/smoke_multi_source.sh](/Users/tjohnson/repos/maestro/scripts/smoke_multi_source.sh)
-- Many-sources smoke with fresh fixtures: [scripts/smoke_many_sources.sh](/Users/tjohnson/repos/maestro/scripts/smoke_many_sources.sh)
+- GitLab smoke: [scripts/smoke_gitlab.sh](scripts/smoke_gitlab.sh)
+- Linear smoke: [scripts/smoke_linear.sh](scripts/smoke_linear.sh)
+- Three-source smoke: [scripts/smoke_multi_source.sh](scripts/smoke_multi_source.sh)
+- Many-sources smoke with fresh fixtures: [scripts/smoke_many_sources.sh](scripts/smoke_many_sources.sh)
 
 These scripts default to `approval_policy=auto`. They create a temporary config, run Maestro, wait for marker files in the workspace, and print the artifact paths.
 
 ## Demo Configs
 
-- GitLab demo: [demo/gitlab-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/gitlab-claude-auto/maestro.yaml)
-- Linear demo: [demo/linear-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/linear-claude-auto/maestro.yaml)
+- GitLab demo: [demo/gitlab-claude-auto/maestro.yaml](demo/gitlab-claude-auto/maestro.yaml)
+- Linear demo: [demo/linear-claude-auto/maestro.yaml](demo/linear-claude-auto/maestro.yaml)
 
 These keep logs, state, and workspaces under `demo/*/var/` so you can inspect and reset them easily.
 
@@ -124,11 +124,11 @@ These keep logs, state, and workspaces under `demo/*/var/` so you can inspect an
 
 ## Docs
 
-- Setup and first run: [docs/getting-started.md](/Users/tjohnson/repos/maestro/docs/getting-started.md)
-- Tracker behavior, including GitLab project issues vs epics: [docs/trackers.md](/Users/tjohnson/repos/maestro/docs/trackers.md)
-- Agent packs, context, tools, and prompt design: [docs/agents.md](/Users/tjohnson/repos/maestro/docs/agents.md)
-- Day-to-day operation: [docs/operator-guide.md](/Users/tjohnson/repos/maestro/docs/operator-guide.md)
-- Canonical demo flows: [docs/demo-walkthroughs.md](/Users/tjohnson/repos/maestro/docs/demo-walkthroughs.md)
-- Release checklist and packaging: [docs/release.md](/Users/tjohnson/repos/maestro/docs/release.md)
-- Test matrix: [TESTING.md](/Users/tjohnson/repos/maestro/TESTING.md)
-- Release notes: [CHANGELOG.md](/Users/tjohnson/repos/maestro/CHANGELOG.md)
+- Setup and first run: [docs/getting-started.md](docs/getting-started.md)
+- Tracker behavior, including GitLab project issues vs epics: [docs/trackers.md](docs/trackers.md)
+- Agent packs, context, tools, and prompt design: [docs/agents.md](docs/agents.md)
+- Day-to-day operation: [docs/operator-guide.md](docs/operator-guide.md)
+- Canonical demo flows: [docs/demo-walkthroughs.md](docs/demo-walkthroughs.md)
+- Release checklist and packaging: [docs/release.md](docs/release.md)
+- Test matrix: [TESTING.md](TESTING.md)
+- Release notes: [CHANGELOG.md](CHANGELOG.md)

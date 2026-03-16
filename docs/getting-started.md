@@ -21,7 +21,7 @@
 export MAESTRO_GITLAB_TOKEN=...
 ```
 
-4. Copy [examples/gitlab-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-auto.yaml) and update:
+4. Copy [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) and update:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.base_url`
@@ -46,7 +46,7 @@ make run CONFIG=demo/gitlab-claude-auto/maestro.yaml
 export MAESTRO_GITLAB_TOKEN=...
 ```
 
-5. Copy [examples/gitlab-epic-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-epic-claude-auto.yaml) and update:
+5. Copy [examples/gitlab-epic-claude-auto.yaml](../examples/gitlab-epic-claude-auto.yaml) and update:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.base_url`
@@ -72,7 +72,7 @@ go run ./cmd/maestro run --config /path/to/maestro.yaml
 export MAESTRO_LINEAR_TOKEN=...
 ```
 
-3. Copy [examples/linear-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/linear-claude-auto.yaml) and update:
+3. Copy [examples/linear-claude-auto.yaml](../examples/linear-claude-auto.yaml) and update:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.project` with the exact project name or GraphQL project ID
@@ -106,8 +106,8 @@ That means multi-source configs are useful for:
 
 Canonical example:
 
-- [examples/multi-source-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/multi-source-claude-auto.yaml)
-- [examples/many-sources-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/many-sources-claude-auto.yaml)
+- [examples/multi-source-claude-auto.yaml](../examples/multi-source-claude-auto.yaml)
+- [examples/many-sources-claude-auto.yaml](../examples/many-sources-claude-auto.yaml)
 
 For larger configs, prefer:
 
@@ -187,9 +187,9 @@ That lets you:
 
 Pack examples live under:
 
-- [agents/code-pr/agent.yaml](/Users/tjohnson/repos/maestro/agents/code-pr/agent.yaml)
-- [agents/repo-maintainer/agent.yaml](/Users/tjohnson/repos/maestro/agents/repo-maintainer/agent.yaml)
-- [agents/triage/agent.yaml](/Users/tjohnson/repos/maestro/agents/triage/agent.yaml)
+- [agents/code-pr/agent.yaml](../agents/code-pr/agent.yaml)
+- [agents/repo-maintainer/agent.yaml](../agents/repo-maintainer/agent.yaml)
+- [agents/triage/agent.yaml](../agents/triage/agent.yaml)
 
 ## Hooks And Stall Detection
 

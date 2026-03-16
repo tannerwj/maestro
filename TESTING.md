@@ -159,8 +159,8 @@ go test ./internal/orchestrator -run TestServiceWithLiveCodexManualApproval -v
 - The default `go test ./...` suite now covers persisted `runs.json` state, approval history persistence, failed-run retries, restart recovery of an interrupted active run, tracker-label-based reconciliation stops, and the operator recovery helpers for run inspection, issue reset, and workspace cleanup.
 - The live Codex manual-approval tests currently skip if the installed Codex app-server never emits an approval request under `on-request`. That behavior was observed in the current local environment on March 15, 2026.
 - Real binary smoke runs remain manual because they require a configured tracker issue plus an authenticated local CLI session.
-- For a real three-source smoke, use [scripts/smoke_multi_source.sh](/Users/tjohnson/repos/maestro/scripts/smoke_multi_source.sh) with one GitLab project issue, one GitLab epic-linked child issue, and one Linear issue isolated by dedicated labels.
-- For a fixture-provisioning many-sources smoke, use [scripts/smoke_many_sources.sh](/Users/tjohnson/repos/maestro/scripts/smoke_many_sources.sh). It creates fresh GitLab project issues, fresh GitLab epics plus linked child issues, and a fresh Linear issue before starting Maestro.
+- For a real three-source smoke, use [scripts/smoke_multi_source.sh](scripts/smoke_multi_source.sh) with one GitLab project issue, one GitLab epic-linked child issue, and one Linear issue isolated by dedicated labels.
+- For a fixture-provisioning many-sources smoke, use [scripts/smoke_many_sources.sh](scripts/smoke_many_sources.sh). It creates fresh GitLab project issues, fresh GitLab epics plus linked child issues, and a fresh Linear issue before starting Maestro.
 
 ## Live Multi-Source Smoke
 

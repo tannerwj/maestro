@@ -20,8 +20,8 @@ The `v0.1` bar is a stable local daemon build that can:
 - `maestro inspect runs --config <demo-config>`
 - `maestro reset issue --config <demo-config> <issue>`
 - `maestro cleanup workspaces --config <demo-config> --dry-run`
-- review [CHANGELOG.md](/Users/tjohnson/repos/maestro/CHANGELOG.md)
-- review known gaps in [README.md](/Users/tjohnson/repos/maestro/README.md)
+- review [CHANGELOG.md](../CHANGELOG.md)
+- review known gaps in [README.md](../README.md)
 
 ## Build Release Archives
 

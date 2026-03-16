@@ -24,7 +24,7 @@ Use GitLab when:
 - you want issue labels for ready/retry/done lifecycle markers
 - you want the simplest end-to-end tracker-to-repo story
 
-Sample config: [examples/gitlab-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-claude-auto.yaml)
+Sample config: [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml)
 
 ## GitLab Epics
 
@@ -67,7 +67,7 @@ Live validation status:
 - the repo ships unit coverage and sample config for epic mode
 - live epic polling, writeback, and reconciliation are validated against an epic-capable GitLab group
 
-Sample config: [examples/gitlab-epic-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/gitlab-epic-claude-auto.yaml)
+Sample config: [examples/gitlab-epic-claude-auto.yaml](../examples/gitlab-epic-claude-auto.yaml)
 ## Linear Project Issues
 
 The current Linear adapter polls project issues and normalizes them into the same internal issue shape used by GitLab.
@@ -85,7 +85,7 @@ Use Linear when:
 - planning lives in Linear but code may live elsewhere
 - you want to test the same orchestration loop against a non-GitLab tracker
 
-Sample config: [examples/linear-claude-auto.yaml](/Users/tjohnson/repos/maestro/examples/linear-claude-auto.yaml)
+Sample config: [examples/linear-claude-auto.yaml](../examples/linear-claude-auto.yaml)
 
 ## Tracker Writeback
 

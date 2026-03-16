@@ -3,7 +3,7 @@
 ## GitLab + Claude
 
 1. Set `MAESTRO_GITLAB_TOKEN`.
-2. Copy [demo/gitlab-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/gitlab-claude-auto/maestro.yaml) and update the tracker fields.
+2. Copy [demo/gitlab-claude-auto/maestro.yaml](../demo/gitlab-claude-auto/maestro.yaml) and update the tracker fields.
 3. Create one matching GitLab issue with the configured label.
 4. Make sure that label only matches the one demo issue you want to run. A temporary demo-specific label is the safest option.
 5. Start Maestro:
@@ -30,7 +30,7 @@ make cleanup-workspaces CONFIG=demo/gitlab-claude-auto/maestro.yaml
 ## Linear + Claude
 
 1. Set `MAESTRO_LINEAR_TOKEN`.
-2. Copy [demo/linear-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/linear-claude-auto/maestro.yaml) and update the tracker fields.
+2. Copy [demo/linear-claude-auto/maestro.yaml](../demo/linear-claude-auto/maestro.yaml) and update the tracker fields.
 3. Create one matching Linear issue in the configured project/state.
 4. Make sure the filter only matches that one demo issue. A temporary demo-specific label is the safest option.
 5. Start Maestro:
@@ -57,7 +57,7 @@ make cleanup-workspaces CONFIG=demo/linear-claude-auto/maestro.yaml
 ## Multi-Source
 
 1. Set both `MAESTRO_GITLAB_TOKEN` and `MAESTRO_LINEAR_TOKEN`.
-2. Copy [demo/multi-source-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/multi-source-claude-auto/maestro.yaml) and update the tracker fields.
+2. Copy [demo/multi-source-claude-auto/maestro.yaml](../demo/multi-source-claude-auto/maestro.yaml) and update the tracker fields.
 3. Prepare three isolated work items:
    - one GitLab project issue
    - one GitLab epic with one linked child issue
@@ -78,7 +78,7 @@ make inspect-state CONFIG=demo/multi-source-claude-auto/maestro.yaml
 
 For a denser real-world starting point with shared defaults and six sources, use:
 
-- [demo/many-sources-claude-auto/maestro.yaml](/Users/tjohnson/repos/maestro/demo/many-sources-claude-auto/maestro.yaml)
+- [demo/many-sources-claude-auto/maestro.yaml](../demo/many-sources-claude-auto/maestro.yaml)
 
 ## Notes
 
