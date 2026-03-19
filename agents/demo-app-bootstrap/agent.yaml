@@ -1,0 +1,20 @@
+name: demo-app-bootstrap
+description: Bootstrap agent for new repository-backed app work with explicit scope, minimal scaffolding, and blocker-first behavior.
+instance_name: demo-app-bootstrap
+harness: claude-code
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+max_concurrent: 1
+tools:
+  - git
+  - existing repo scripts
+  - narrow package manager commands
+  - targeted verification commands
+skills:
+  - minimal scaffolding
+  - explicit scope control
+  - blocker-first execution
+  - verification hygiene
+context_files:
+  - context.md

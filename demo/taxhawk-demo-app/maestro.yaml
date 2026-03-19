@@ -1,0 +1,51 @@
+defaults:
+  poll_interval: 5s
+  max_concurrent_global: 1
+  stall_timeout: 20m
+
+agent_packs_dir: ../../agents
+
+user:
+  name: "Tanner Johnson"
+
+server:
+  enabled: true
+  host: 127.0.0.1
+  port: 8742
+
+sources:
+  - name: demo-app-repo
+    display_group: Demo App
+    tags: [demo-app, repo]
+    tracker: gitlab-epic
+    connection:
+      base_url: https://git.taxhawk.com
+      token_env: MAESTRO_TAXHAWK_GITLAB_TOKEN
+      group: maestro-test
+    repo: https://git.taxhawk.com/maestro-test/maestro-demo-app.git
+    epic_filter:
+      labels: [bucket:demo-app]
+    issue_filter:
+      labels: [agent:ready, workflow:repo]
+    agent_type: demo_repo
+    poll_interval: 5s
+
+agent_types:
+  - name: demo_repo
+    agent_pack: demo-app-bootstrap
+    instance_name: demo-repo-builder
+    approval_policy: auto
+    max_concurrent: 1
+
+workspace:
+  root: ./var/workspaces
+
+state:
+  dir: ./var/state
+  retry_base: 5s
+  max_retry_backoff: 2m
+  max_attempts: 3
+
+logging:
+  level: info
+  dir: ./var/logs

@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${MAESTRO_APPROVAL_POLICY:=auto}"
 : "${MAESTRO_TIMEOUT_SECONDS:=180}"
 : "${MAESTRO_GITLAB_LABEL:=agent:ready}"
+: "${MAESTRO_GITLAB_SMOKE_PROVISION_FIXTURE:=1}"
 : "${MAESTRO_USER_NAME:=Smoke User}"
 : "${MAESTRO_GITLAB_USERNAME:=}"
 
@@ -27,6 +28,9 @@ logs_root="${tmpdir}/logs"
 state_root="${tmpdir}/state"
 marker="MAESTRO_GITLAB_SMOKE_OK"
 binary_path="${tmpdir}/maestro"
+issue_iid=""
+issue_label="${MAESTRO_GITLAB_LABEL}"
+provisioned_issue=0
 
 run_is_idle() {
   local state_file="${state_root}/runs.json"
@@ -43,9 +47,47 @@ cleanup() {
     sleep 1
     kill -KILL "${maestro_pid}" 2>/dev/null || true
   fi
+  if [[ "${provisioned_issue}" == "1" ]] && [[ -n "${issue_iid}" ]]; then
+    python3 - <<'PY' >/dev/null 2>&1 || true
+import os, urllib.parse, urllib.request
+base=os.environ['MAESTRO_GITLAB_BASE_URL'].rstrip('/')
+project=os.environ['MAESTRO_GITLAB_PROJECT']
+iid=os.environ['MAESTRO_SMOKE_ISSUE_IID']
+token=os.environ['MAESTRO_GITLAB_TOKEN']
+url=f"{base}/api/v4/projects/{urllib.parse.quote(project, safe='')}/issues/{iid}"
+data=urllib.parse.urlencode({'state_event':'close'}).encode()
+req=urllib.request.Request(url,data=data,method='PUT',headers={'PRIVATE-TOKEN':token})
+urllib.request.urlopen(req).read()
+PY
+  fi
   wait "${maestro_pid:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+if [[ "${MAESTRO_GITLAB_SMOKE_PROVISION_FIXTURE}" == "1" ]]; then
+  issue_label="smoke-$(date +%s)"
+  export MAESTRO_SMOKE_LABEL="${issue_label}"
+  issue_json="$(python3 - <<'PY'
+import json, os, time, urllib.parse, urllib.request
+base=os.environ['MAESTRO_GITLAB_BASE_URL'].rstrip('/')
+project=os.environ['MAESTRO_GITLAB_PROJECT']
+label=os.environ['MAESTRO_SMOKE_LABEL']
+token=os.environ['MAESTRO_GITLAB_TOKEN']
+url=f"{base}/api/v4/projects/{urllib.parse.quote(project, safe='')}/issues"
+data=urllib.parse.urlencode({
+    'title': f'GitLab smoke fixture {int(time.time())}',
+    'description': 'Disposable fixture for Maestro GitLab smoke',
+    'labels': f'agent:ready,{label}',
+}).encode()
+req=urllib.request.Request(url,data=data,method='POST',headers={'PRIVATE-TOKEN':token})
+with urllib.request.urlopen(req) as resp:
+    print(json.dumps(json.load(resp)))
+PY
+)"
+  issue_iid="$(printf '%s' "${issue_json}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["iid"])')"
+  export MAESTRO_SMOKE_ISSUE_IID="${issue_iid}"
+  provisioned_issue=1
+fi
 
 cat >"${prompt_path}" <<EOF
 Create a file named SMOKE_RESULT.md in the repository root containing exactly ${marker}.
@@ -69,7 +111,7 @@ sources:
       token_env: MAESTRO_GITLAB_TOKEN
       project: ${MAESTRO_GITLAB_PROJECT}
     filter:
-      labels: [${MAESTRO_GITLAB_LABEL}]
+      labels: [${issue_label}]
     agent_type: code-pr
     poll_interval: 2s
 
@@ -142,3 +184,7 @@ echo "Workspace root: ${workspace_root}"
 echo "Result file: ${result_file}"
 echo "Logs: ${logs_root}"
 echo "Stdout: ${tmpdir}/maestro.stdout"
+if [[ "${provisioned_issue}" == "1" ]]; then
+  echo "Provisioned issue: ${MAESTRO_GITLAB_PROJECT}#${issue_iid}"
+  echo "Provisioned label: ${issue_label}"
+fi

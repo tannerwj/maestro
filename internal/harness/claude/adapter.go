@@ -256,20 +256,48 @@ func (r *claudeRun) runDetection(binary string) (*harness.ApprovalRequest, error
 func (r *claudeRun) runPermissive(binary string, permissionMode string) error {
 	cmd := exec.CommandContext(r.ctx, binary,
 		"--print",
+		"--verbose",
+		"--output-format", "stream-json",
 		"--permission-mode", permissionMode,
 		"--add-dir", r.workdir,
 	)
 	cmd.Dir = r.workdir
 	cmd.Stdin = strings.NewReader(r.prompt)
-	cmd.Stdout = r.stdout
-	cmd.Stderr = r.stderr
 	cmd.Env = mergeEnv(r.env)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	r.setCmd(cmd)
 	defer r.clearCmd(cmd)
+
+	go func() {
+		_, _ = io.Copy(r.stderr, stderr)
+	}()
+
+	decoder := json.NewDecoder(stdout)
+	for {
+		var event streamEvent
+		if err := decoder.Decode(&event); err != nil {
+			if err == io.EOF {
+				break
+			}
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			return err
+		}
+		r.writeStreamEvent(event)
+	}
+
 	return cmd.Wait()
 }
 
@@ -350,6 +378,25 @@ func writerOrDiscard(w io.Writer) io.Writer {
 		return io.Discard
 	}
 	return w
+}
+
+func (r *claudeRun) writeStreamEvent(event streamEvent) {
+	if strings.TrimSpace(event.Result) != "" {
+		_, _ = io.WriteString(r.stdout, event.Result)
+		if !strings.HasSuffix(event.Result, "\n") {
+			_, _ = io.WriteString(r.stdout, "\n")
+		}
+		return
+	}
+
+	switch event.Type {
+	case "assistant":
+		_, _ = io.WriteString(r.stdout, "[claude assistant event]\n")
+	case "tool_use":
+		_, _ = io.WriteString(r.stdout, "[claude tool use]\n")
+	case "tool_result":
+		_, _ = io.WriteString(r.stdout, "[claude tool result]\n")
+	}
 }
 
 func mergeEnv(extra map[string]string) []string {

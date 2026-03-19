@@ -23,6 +23,30 @@ import (
 	"github.com/tjohnson/maestro/internal/workspace"
 )
 
+type getOnlyTracker struct {
+	issue domain.Issue
+}
+
+func (g getOnlyTracker) Kind() string { return "get-only" }
+func (g getOnlyTracker) Poll(ctx context.Context) ([]domain.Issue, error) {
+	return nil, nil
+}
+func (g getOnlyTracker) Get(ctx context.Context, issueID string) (domain.Issue, error) {
+	if g.issue.ID != issueID {
+		return domain.Issue{}, errors.New("not found")
+	}
+	return g.issue, nil
+}
+func (g getOnlyTracker) PostOperationalComment(ctx context.Context, issueID string, body string) error {
+	return nil
+}
+func (g getOnlyTracker) AddLifecycleLabel(ctx context.Context, issueID string, label string) error {
+	return nil
+}
+func (g getOnlyTracker) RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error {
+	return nil
+}
+
 func TestServiceRunsIssueOncePerProcess(t *testing.T) {
 	cfg := testConfig(t)
 	repoURL := createGitRepo(t)
@@ -494,6 +518,69 @@ func TestServiceRecoversActiveRunAsRetry(t *testing.T) {
 	waitFor(t, 2*time.Second, func() bool {
 		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun == nil
 	})
+	if !strings.Contains(fakeHarness.StartedRuns[0].Prompt, "attempt 1") {
+		t.Fatalf("recovered prompt = %q, want attempt 1", fakeHarness.StartedRuns[0].Prompt)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
+func TestServiceRecoversActiveRunAsRetryWithoutFreshPollCandidate(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfigWithRoot(t, root)
+	repoURL := createGitRepo(t)
+	now := time.Now().UTC().Round(time.Second)
+
+	if err := state.NewStore(cfg.State.Dir).Save(state.Snapshot{
+		ActiveRun: &state.PersistedRun{
+			RunID:          "run-123",
+			IssueID:        "gitlab:team/project#188",
+			Identifier:     "team/project#188",
+			Status:         domain.RunStatusActive,
+			Attempt:        0,
+			StartedAt:      now,
+			LastActivityAt: now,
+			IssueUpdatedAt: now,
+		},
+	}); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	issue := domain.Issue{
+		ID:          "gitlab:team/project#188",
+		Identifier:  "team/project#188",
+		Title:       "Recovered without poll candidate",
+		SourceName:  cfg.Sources[0].Name,
+		TrackerKind: "gitlab",
+		UpdatedAt:   now.Add(time.Minute),
+		Meta: map[string]string{
+			"repo_url": repoURL,
+		},
+	}
+
+	fakeHarness := &testutil.FakeHarness{}
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   getOnlyTracker{issue: issue},
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun == nil
+	})
+
 	if !strings.Contains(fakeHarness.StartedRuns[0].Prompt, "attempt 1") {
 		t.Fatalf("recovered prompt = %q, want attempt 1", fakeHarness.StartedRuns[0].Prompt)
 	}

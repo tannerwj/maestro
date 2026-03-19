@@ -4,5 +4,6 @@
 .envrc
 bin/
 dist/
+demo/taxhawk-demo-app/var/
 .claude/
 .DS_Store

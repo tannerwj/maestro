@@ -141,6 +141,24 @@ go test ./internal/tracker/gitlab -run TestLiveGitLabLifecycleWriteback -v
 go test ./internal/orchestrator -run TestServiceWithLiveGitLabReconciliationStopsRunWhenIssueCloses -v
 ```
 
+For a full end-to-end GitLab smoke using the real CLI/harness path:
+
+```bash
+export MAESTRO_GITLAB_BASE_URL=https://gitlab.com
+export MAESTRO_GITLAB_PROJECT=<namespace/project>
+./scripts/smoke_gitlab.sh
+```
+
+By default, `scripts/smoke_gitlab.sh` now provisions its own disposable GitLab issue with a unique
+label and closes it during cleanup. If you want to point the smoke at an existing issue pool
+instead, set:
+
+```bash
+export MAESTRO_GITLAB_SMOKE_PROVISION_FIXTURE=0
+export MAESTRO_GITLAB_LABEL=agent:ready
+./scripts/smoke_gitlab.sh
+```
+
 GitLab epic support currently has hermetic unit coverage but no default live test command in this repo, because live validation requires access to a GitLab group with epics enabled.
 
 If you do have an epic-capable GitLab group, you can enable the epic live suite with:
@@ -186,6 +204,22 @@ go test ./internal/tracker/linear -run TestLiveLinearPollsConfiguredProject -v
 go test ./internal/tracker/linear -run TestLiveLinearLifecycleWriteback -v
 go test ./internal/orchestrator -run TestServiceWithLiveLinearSource -v
 go test ./internal/orchestrator -run TestServiceWithLiveLinearReconciliationStopsRunWhenIssueCompletes -v
+```
+
+For a full end-to-end Linear smoke using the real CLI/harness path:
+
+```bash
+export MAESTRO_LINEAR_PROJECT="Maestro Testbed"
+./scripts/smoke_linear.sh
+```
+
+By default, `scripts/smoke_linear.sh` now provisions its own disposable labeled issue, moves it into
+the configured workflow state, and marks it completed during cleanup. If you want to point the smoke
+at an existing issue pool instead, set:
+
+```bash
+export MAESTRO_LINEAR_SMOKE_PROVISION_FIXTURE=0
+./scripts/smoke_linear.sh
 ```
 
 ## Live Claude validation

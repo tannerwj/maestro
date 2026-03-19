@@ -98,7 +98,8 @@ Built-in agent packs:
 - Three-source smoke: [scripts/smoke_multi_source.sh](scripts/smoke_multi_source.sh)
 - Many-sources smoke with fresh fixtures: [scripts/smoke_many_sources.sh](scripts/smoke_many_sources.sh)
 
-These scripts default to `approval_policy=auto`. They create a temporary config, run Maestro, wait for marker files in the workspace, and print the artifact paths.
+These scripts default to `approval_policy=auto`. They create a temporary config, run Maestro, wait for marker files in the workspace, and print the artifact paths. The GitLab smoke provisions and closes its own disposable issue by default so it does not depend on a pre-labeled tracker fixture already being open.
+The Linear smoke now does the same: it provisions a disposable issue in the configured project, moves it into the target state, and marks it completed during cleanup.
 
 ## Demo Configs
 

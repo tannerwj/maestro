@@ -1,0 +1,43 @@
+{
+  "group": "maestro-test",
+  "project": {
+    "id": 1257,
+    "path_with_namespace": "maestro-test/maestro-demo-app",
+    "web_url": "https://git.taxhawk.com/maestro-test/maestro-demo-app",
+    "default_branch": "master",
+    "initial_commit_sha": "5815f47806c23a0de29fa239ed66093c4208540a"
+  },
+  "epic": {
+    "id": 3233,
+    "iid": 16,
+    "title": "Build reusable demo app",
+    "label": "bucket:demo-app"
+  },
+  "issues": [
+    {
+      "iid": 1,
+      "title": "Bootstrap the demo app shell and stack",
+      "labels": ["agent:ready", "workflow:repo"]
+    },
+    {
+      "iid": 2,
+      "title": "Add task API with in-memory persistence",
+      "labels": ["agent:ready", "workflow:backend"]
+    },
+    {
+      "iid": 3,
+      "title": "Build the task list and editing UI",
+      "labels": ["agent:ready", "workflow:frontend"]
+    },
+    {
+      "iid": 4,
+      "title": "Replace in-memory task storage with SQLite",
+      "labels": ["agent:ready", "workflow:backend"]
+    },
+    {
+      "iid": 5,
+      "title": "Add tests and CI checks for the demo app",
+      "labels": ["agent:ready", "workflow:qa"]
+    }
+  ]
+}

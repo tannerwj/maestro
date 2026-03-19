@@ -4,6 +4,8 @@ import (
 	"context"
 	"sort"
 	"time"
+
+	trackerbase "github.com/tjohnson/maestro/internal/tracker"
 )
 
 func (s *Service) Run(ctx context.Context) error {
@@ -69,8 +71,61 @@ func (s *Service) tick(ctx context.Context) error {
 		return nil
 	}
 
+	if err := s.dispatchDueRetry(ctx); err != nil {
+		return err
+	}
+
 	for _, issue := range issues {
 		if s.isClaimed(issue.ID) || s.shouldSkipIssue(issue) {
+			continue
+		}
+		return s.dispatch(ctx, issue)
+	}
+
+	return nil
+}
+
+func (s *Service) dispatchDueRetry(ctx context.Context) error {
+	type retryCandidate struct {
+		issueID string
+		dueAt   time.Time
+	}
+
+	s.mu.RLock()
+	candidates := make([]retryCandidate, 0, len(s.retryQueue))
+	for issueID, retry := range s.retryQueue {
+		if time.Now().Before(retry.DueAt) {
+			continue
+		}
+		candidates = append(candidates, retryCandidate{
+			issueID: issueID,
+			dueAt:   retry.DueAt,
+		})
+	}
+	s.mu.RUnlock()
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].dueAt.Equal(candidates[j].dueAt) {
+			return candidates[i].issueID < candidates[j].issueID
+		}
+		return candidates[i].dueAt.Before(candidates[j].dueAt)
+	})
+
+	for _, candidate := range candidates {
+		if s.isClaimed(candidate.issueID) {
+			continue
+		}
+		issue, err := s.tracker.Get(ctx, candidate.issueID)
+		if err != nil {
+			s.recordSourceEvent("warn", s.source.Name, "retry lookup failed for %s: %v", candidate.issueID, err)
+			continue
+		}
+		if trackerbase.IsTerminal(issue) {
+			s.mu.Lock()
+			delete(s.retryQueue, candidate.issueID)
+			s.mu.Unlock()
+			_ = s.saveStateBestEffort()
+			s.recordSourceEvent("warn", s.source.Name, "discarded retry for terminal issue %s", issue.Identifier)
 			continue
 		}
 		return s.dispatch(ctx, issue)

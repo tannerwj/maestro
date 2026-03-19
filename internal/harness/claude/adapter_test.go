@@ -15,7 +15,7 @@ func TestAdapterStartAndWaitWithStubBinary(t *testing.T) {
 	tmp := t.TempDir()
 	binary := filepath.Join(tmp, "claude")
 	argsPath := filepath.Join(tmp, "args.txt")
-	script := "#!/bin/sh\nprintf '%s\n' \"$@\" > \"" + argsPath + "\"\nprintf 'prompt:'\ncat\n"
+	script := "#!/bin/sh\nprintf '%s\n' \"$@\" > \"" + argsPath + "\"\ncat >/tmp/claude-input.$$ \nprintf '%s\n' '{\"type\":\"assistant\"}'\nprintf '{\"type\":\"result\",\"result\":\"prompt:'\nprintf '%s' \"$(cat /tmp/claude-input.$$)\"\nprintf '%s\n' '\"}'\nrm -f /tmp/claude-input.$$\n"
 	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 		t.Fatalf("write stub claude: %v", err)
 	}
@@ -53,6 +53,9 @@ func TestAdapterStartAndWaitWithStubBinary(t *testing.T) {
 	if !strings.Contains(args, "--permission-mode\nbypassPermissions") {
 		t.Fatalf("args = %q, want bypassPermissions", args)
 	}
+	if !strings.Contains(args, "--output-format\nstream-json") {
+		t.Fatalf("args = %q, want stream-json", args)
+	}
 	if !strings.Contains(args, "--add-dir\n"+tmp) {
 		t.Fatalf("args = %q, want add-dir %s", args, tmp)
 	}
@@ -73,7 +76,8 @@ case "$*" in
     ;;
   *"--permission-mode acceptEdits"*)
     cat >/dev/null
-    printf 'APPROVED'
+    printf '%s\n' '{"type":"assistant"}'
+    printf '%s\n' '{"type":"result","result":"APPROVED"}'
     printf '%s' 'APPROVED' > "` + tmp + `/APPROVAL.txt"
     ;;
   *)
@@ -148,5 +152,8 @@ esac
 	}
 	if !strings.Contains(log, "--permission-mode\nacceptEdits") {
 		t.Fatalf("invocations = %q, want acceptEdits rerun", log)
+	}
+	if !strings.Contains(log, "--output-format\nstream-json") {
+		t.Fatalf("invocations = %q, want stream-json in permissive run", log)
 	}
 }
