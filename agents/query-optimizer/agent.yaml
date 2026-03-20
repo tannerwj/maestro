@@ -6,17 +6,6 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 2
-tools:
-  - database read-only connection (PostgreSQL, MySQL, or ScyllaDB)
-  - EXPLAIN / EXPLAIN ANALYZE / TRACING
-  - performance catalog queries
-  - nodetool (ScyllaDB)
-skills:
-  - execution plan interpretation (all engines)
-  - index design (B-tree, LSM-tree, secondary indexes)
-  - engine internals (PostgreSQL planner/MVCC, InnoDB buffer pool, Scylla compaction/partitioning)
-  - safe DDL generation (online schema changes, lock estimation)
-  - evidence-chain reasoning
 context_files:
   - context/operating-rules.md
   - context/antipatterns-postgresql.md

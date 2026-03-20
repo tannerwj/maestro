@@ -126,12 +126,18 @@ func applySystemDefaults(cfg *Config) {
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 8742
 	}
+	if strings.TrimSpace(cfg.Defaults.LabelPrefix) == "" {
+		cfg.Defaults.LabelPrefix = "maestro"
+	}
 }
 
 func applyDefaults(cfg *Config) {
 	for i := range cfg.Sources {
 		if cfg.Sources[i].PollInterval.Duration == 0 {
 			cfg.Sources[i].PollInterval = cfg.Defaults.PollInterval
+		}
+		if strings.TrimSpace(cfg.Sources[i].LabelPrefix) == "" {
+			cfg.Sources[i].LabelPrefix = cfg.Defaults.LabelPrefix
 		}
 	}
 	for i := range cfg.AgentTypes {

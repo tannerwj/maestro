@@ -18,6 +18,19 @@ type RunConfig struct {
 	Env            map[string]string
 	Stdout         io.Writer
 	Stderr         io.Writer
+
+	// Harness configuration
+	Model     string
+	Reasoning string
+	MaxTurns  int
+	ExtraArgs []string
+
+	// Codex-specific
+	ThreadSandbox     string
+	TurnSandboxPolicy map[string]any
+
+	// Multi-turn continuation
+	ContinuationFunc func(ctx context.Context, turnNumber int) (prompt string, cont bool, err error)
 }
 
 type ActiveRun interface {

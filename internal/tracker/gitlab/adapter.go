@@ -130,6 +130,39 @@ func (a *Adapter) RemoveLifecycleLabel(ctx context.Context, issueID string, labe
 	return a.updateLifecycleLabel(ctx, issueID, "", label)
 }
 
+// UpdateIssueState changes the GitLab issue state. Recognized values are
+// "close"/"closed" and "reopen"/"open"/"opened"; other values are ignored.
+func (a *Adapter) UpdateIssueState(ctx context.Context, issueID string, stateName string) error {
+	event := ""
+	switch strings.ToLower(strings.TrimSpace(stateName)) {
+	case "close", "closed":
+		event = "close"
+	case "reopen", "open", "opened":
+		event = "reopen"
+	default:
+		return nil
+	}
+
+	form := url.Values{}
+	form.Set("state_event", event)
+
+	if a.epicMode() {
+		ref, err := parseGitLabEpicIssueRef(issueID)
+		if err != nil {
+			return err
+		}
+		_, err = a.client.putForm(ctx, fmt.Sprintf("/api/v4/projects/%s/issues/%d", url.PathEscape(ref.Project), ref.IssueIID), form, nil)
+		return err
+	}
+
+	ref, err := parseGitLabIssueRef(issueID)
+	if err != nil {
+		return err
+	}
+	_, err = a.client.putForm(ctx, fmt.Sprintf("/api/v4/projects/%s/issues/%d", url.PathEscape(ref.Project), ref.IID), form, nil)
+	return err
+}
+
 func (a *Adapter) pollProjectIssues(ctx context.Context) ([]domain.Issue, error) {
 	if err := a.ensureProject(ctx); err != nil {
 		return nil, err
@@ -158,7 +191,7 @@ func (a *Adapter) pollProjectIssues(ctx context.Context) ([]domain.Issue, error)
 
 		for _, item := range payload {
 			issue := a.normalizeProjectIssue(item)
-			if trackerbase.IsCandidate(issue, filter) {
+			if trackerbase.IsCandidateWithPrefix(issue, filter, a.source.LabelPrefix) {
 				out = append(out, issue)
 			}
 		}
@@ -207,7 +240,7 @@ func (a *Adapter) pollEpicIssues(ctx context.Context) ([]domain.Issue, error) {
 		if !ok {
 			continue
 		}
-		if trackerbase.IsCandidate(issue, epicIssueDisplayFilter(a.source)) {
+		if trackerbase.IsCandidateWithPrefix(issue, epicIssueDisplayFilter(a.source), a.source.LabelPrefix) {
 			out = append(out, issue)
 		}
 	}
@@ -235,7 +268,7 @@ func (a *Adapter) pollCandidateEpics(ctx context.Context) ([]epicResponse, error
 		}
 
 		for _, item := range payload {
-			if trackerbase.HasBlockingLifecycleLabel(normalizeLabels(item.Labels)) {
+			if trackerbase.HasBlockingLifecycleLabelWithPrefix(normalizeLabels(item.Labels), a.source.LabelPrefix) {
 				continue
 			}
 			if a.matchesEpicFilter(item) {
@@ -460,7 +493,8 @@ func (a *Adapter) matchesEpicFilter(epic epicResponse) bool {
 		State:  normalizeState(epic.State),
 		Labels: normalizeLabels(epic.Labels),
 	}
-	return trackerbase.MatchesFilter(issue, filter) && !trackerbase.HasBlockingLifecycleLabel(issue.Labels)
+	return trackerbase.MatchesFilterWithPrefix(issue, filter, a.source.LabelPrefix) &&
+		!trackerbase.HasBlockingLifecycleLabelWithPrefix(issue.Labels, a.source.LabelPrefix)
 }
 
 func (a *Adapter) matchesEpicIssueFilter(item issueResponse) bool {
@@ -473,7 +507,7 @@ func (a *Adapter) matchesEpicIssueFilter(item issueResponse) bool {
 		Labels:   normalizeLabels(item.Labels),
 		Assignee: issueAssignee(item),
 	}
-	return trackerbase.IsCandidate(issue, filter)
+	return trackerbase.IsCandidateWithPrefix(issue, filter, a.source.LabelPrefix)
 }
 
 func epicIssueDisplayFilter(source config.SourceConfig) config.FilterConfig {

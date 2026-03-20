@@ -7,6 +7,7 @@
 - One authenticated harness:
   - `claude`
   - `codex`
+- Model defaults are configurable via `codex_defaults` and `claude_defaults` in `maestro.yaml` — no need to set environment variables for model selection
 - One tracker token:
   - GitLab personal access token for project issue polling
   - Linear API token for project issue polling
@@ -139,6 +140,116 @@ For large configs, `display_group` and `tags` are useful optional source metadat
 Each source keeps its own local state under:
 
 - `state.dir/<source-name>/runs.json`
+
+## Lifecycle Transitions
+
+Sources support `on_dispatch`, `on_complete`, and `on_failure` hooks that manipulate tracker labels
+and state on each lifecycle event. This enables pipeline-style workflows where completing one source
+feeds work into the next.
+
+You can define these hooks globally under `defaults` and override them per source. Resolution order
+is:
+
+1. source hook override
+2. `defaults.on_dispatch` / `defaults.on_complete` / `defaults.on_failure`
+3. built-in behavior
+
+Default behavior (no hooks configured):
+
+- Dispatch: add `{prefix}:active`, remove `{prefix}:retry`/`done`/`failed`
+- Complete: remove `{prefix}:active`, add `{prefix}:done`
+- Failure: remove `{prefix}:active`, add `{prefix}:failed`
+- Retry: remove `{prefix}:active`, add `{prefix}:retry`
+
+The label prefix defaults to `maestro` and is configurable via `defaults.label_prefix`.
+
+Important distinction:
+
+- Exact reserved lifecycle labels are `{prefix}:active`, `{prefix}:done`, `{prefix}:failed`, and `{prefix}:retry`.
+- Other labels in the same namespace such as `{prefix}:coding` or `{prefix}:review` are treated as normal routing labels and remain visible to source filters.
+- In practice, this means you can route with `{prefix}:coding` while Maestro uses only `{prefix}:active` as the shared "currently claimed" marker during execution.
+- `state` inside these hooks is best-effort tracker metadata only. Label transitions are the portable routing contract.
+
+Pipeline example — three sources chained via label transitions:
+
+```yaml
+defaults:
+  label_prefix: maestro
+  on_failure:
+    add_labels: [maestro:needs-attention]
+
+sources:
+  - name: coding
+    filter:
+      labels: [maestro:coding]
+    agent_type: dev-codex
+    on_complete:
+      add_labels: [maestro:review]
+      remove_labels: [maestro:coding]
+    on_failure:
+      add_labels: [maestro:coding-failed]
+      remove_labels: [maestro:coding]
+
+  - name: code-review
+    filter:
+      labels: [maestro:review]
+    agent_type: code-reviewer
+    on_complete:
+      add_labels: [maestro:security-review]
+      remove_labels: [maestro:review]
+    on_failure:
+      add_labels: [maestro:review-failed]
+      remove_labels: [maestro:review]
+
+  - name: security-review
+    filter:
+      labels: [maestro:security-review]
+    agent_type: security-reviewer
+    on_complete:
+      remove_labels: [maestro:security-review]
+    on_failure:
+      add_labels: [maestro:security-failed]
+      remove_labels: [maestro:security-review]
+```
+
+When `coding` completes, it removes the `maestro:coding` label and adds `maestro:review`, which causes the
+issue to match the `code-review` source on the next poll. Each stage hands off to the next via
+labels. In this example, every source inherits the global `on_failure` behavior unless it
+overrides that hook locally.
+
+## Harness Configuration
+
+Model, reasoning effort, and other harness-specific settings are configurable at two levels:
+
+1. **Top-level defaults** apply to all agents using that harness:
+
+```yaml
+codex_defaults:
+  model: gpt-5.4
+  reasoning: high
+  max_turns: 20
+  thread_sandbox: workspace-write
+
+claude_defaults:
+  model: opus-4.6
+  reasoning: high
+  max_turns: 1
+```
+
+2. **Per-agent overrides** win over defaults:
+
+```yaml
+agent_types:
+  - name: dev-codex
+    harness: codex
+    agent_pack: dev-codex
+    codex:
+      max_turns: 30
+      reasoning: medium
+```
+
+Codex supports multi-turn execution: between turns, Maestro sends a continuation prompt with
+refreshed issue state so the agent can react to tracker changes mid-session.
 
 ## Build And Install
 

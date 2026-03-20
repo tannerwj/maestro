@@ -1,0 +1,12 @@
+name: dev-claude
+description: General-purpose code implementation agent using Claude Code.
+instance_name: dev-claude
+harness: claude-code
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+max_concurrent: 3
+claude:
+  reasoning: high
+context_files:
+  - context.md

@@ -8,6 +8,34 @@ import (
 	"text/template"
 )
 
+var defaultFuncMap = template.FuncMap{
+	"default": func(dflt any, val any) any {
+		if val == nil {
+			return dflt
+		}
+		if s, ok := val.(string); ok && s == "" {
+			return dflt
+		}
+		return val
+	},
+	"join":      strings.Join,
+	"lower":     strings.ToLower,
+	"upper":     strings.ToUpper,
+	"trim":      strings.TrimSpace,
+	"contains":  strings.Contains,
+	"hasPrefix": strings.HasPrefix,
+	"indent": func(spaces int, s string) string {
+		pad := strings.Repeat(" ", spaces)
+		lines := strings.Split(s, "\n")
+		for i, line := range lines {
+			if line != "" {
+				lines[i] = pad + line
+			}
+		}
+		return strings.Join(lines, "\n")
+	},
+}
+
 type Data struct {
 	Issue               any
 	User                any
@@ -35,7 +63,7 @@ func ParseFile(path string) (*template.Template, error) {
 		return nil, err
 	}
 
-	tpl, err := template.New(path).Option("missingkey=error").Parse(string(raw))
+	tpl, err := template.New(path).Funcs(defaultFuncMap).Option("missingkey=error").Parse(string(raw))
 	if err != nil {
 		return nil, fmt.Errorf("parse prompt template: %w", err)
 	}

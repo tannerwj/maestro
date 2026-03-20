@@ -21,6 +21,8 @@ type AgentPackConfig struct {
 	ApprovalPolicy string            `yaml:"approval_policy"`
 	Communication  string            `yaml:"communication"`
 	MaxConcurrent  int               `yaml:"max_concurrent"`
+	Codex          *CodexConfig      `yaml:"codex"`
+	Claude         *ClaudeConfig     `yaml:"claude"`
 	Env            map[string]string `yaml:"env"`
 	Tools          []string          `yaml:"tools"`
 	Skills         []string          `yaml:"skills"`
@@ -223,6 +225,8 @@ func mergeAgentPack(agent *AgentTypeConfig, pack *AgentPackConfig) {
 	if agent.MaxConcurrent == 0 {
 		agent.MaxConcurrent = pack.MaxConcurrent
 	}
+	agent.Codex = mergeCodexConfig(pack.Codex, agent.Codex)
+	agent.Claude = mergeClaudeConfig(pack.Claude, agent.Claude)
 	agent.Tools = appendUnique(pack.Tools, agent.Tools)
 	agent.Skills = appendUnique(pack.Skills, agent.Skills)
 	agent.ContextFiles = appendUnique(pack.ContextFiles, agent.ContextFiles)

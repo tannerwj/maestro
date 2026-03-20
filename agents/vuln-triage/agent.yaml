@@ -6,15 +6,6 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 3
-tools:
-  - dependency tree commands
-  - package managers
-  - web fetch (NVD, EPSS, KEV APIs)
-skills:
-  - SSVC deployer decision tree
-  - CVE enrichment and cross-referencing
-  - dependency reachability analysis
-  - evidence-backed triage assessment
 context_files:
   - context/operating-rules.md
   - context/ssvc-decision-matrix.md

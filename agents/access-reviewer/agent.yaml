@@ -6,15 +6,6 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 1
-tools:
-  - IAM provider APIs (read-only)
-  - HRIS integration (read-only)
-  - tracker API for sub-issue creation
-skills:
-  - SOC2, ISO 27001, PCI-DSS compliance assessment
-  - least-privilege analysis
-  - separation of duties evaluation
-  - evidence-chain documentation
 context_files:
   - context/operating-rules.md
   - context/severity-classification.md

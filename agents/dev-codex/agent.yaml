@@ -1,0 +1,16 @@
+name: dev-codex
+description: General-purpose code implementation agent using Codex.
+instance_name: dev-codex
+harness: codex
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+max_concurrent: 3
+codex:
+  reasoning: high
+  max_turns: 20
+  thread_sandbox: danger-full-access
+  turn_sandbox_policy:
+    type: dangerFullAccess
+context_files:
+  - context.md

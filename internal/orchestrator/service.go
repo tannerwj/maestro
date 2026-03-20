@@ -445,6 +445,16 @@ func parseLevel(level string) slog.Level {
 	}
 }
 
+func (s *Service) labelPrefix() string {
+	if p := strings.TrimSpace(s.source.LabelPrefix); p != "" {
+		return p
+	}
+	if p := strings.TrimSpace(s.cfg.Defaults.LabelPrefix); p != "" {
+		return p
+	}
+	return "maestro"
+}
+
 func (s *Service) renderPrompt(agent config.AgentTypeConfig, issue domain.Issue, agentName string, attempt int, operatorInstruction string) (string, error) {
 	return prompt.RenderFile(agent.Prompt, prompt.Data{
 		Issue:               issue,

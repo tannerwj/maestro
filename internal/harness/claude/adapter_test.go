@@ -29,10 +29,12 @@ func TestAdapterStartAndWaitWithStubBinary(t *testing.T) {
 
 	var stdout strings.Builder
 	run, err := adapter.Start(context.Background(), harness.RunConfig{
-		RunID:   "run-1",
-		Prompt:  "hello world\n",
-		Workdir: tmp,
-		Stdout:  &stdout,
+		RunID:     "run-1",
+		Prompt:    "hello world\n",
+		Workdir:   tmp,
+		Stdout:    &stdout,
+		Model:     "opus-test",
+		Reasoning: "medium",
 	})
 	if err != nil {
 		t.Fatalf("start harness: %v", err)
@@ -58,6 +60,12 @@ func TestAdapterStartAndWaitWithStubBinary(t *testing.T) {
 	}
 	if !strings.Contains(args, "--add-dir\n"+tmp) {
 		t.Fatalf("args = %q, want add-dir %s", args, tmp)
+	}
+	if !strings.Contains(args, "--model\nopus-test") {
+		t.Fatalf("args = %q, want model override", args)
+	}
+	if !strings.Contains(args, "--config\nmodel_reasoning_effort=medium") {
+		t.Fatalf("args = %q, want reasoning config", args)
 	}
 }
 

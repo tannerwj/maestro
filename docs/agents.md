@@ -49,6 +49,19 @@ context_files:
   - context.md
 env:
   GOFLAGS: -mod=mod
+
+# Harness-specific config (only the matching harness block is used)
+claude:
+  model: opus-4.6
+  reasoning: high
+  max_turns: 1
+  extra_args: ["--verbose"]
+
+codex:
+  model: gpt-5.4
+  reasoning: high
+  max_turns: 20
+  thread_sandbox: workspace-write
 ```
 
 Optional pack directories:
@@ -67,6 +80,18 @@ Point the config at a pack root, then reference a local pack by name:
 ```yaml
 agent_packs_dir: ../agents
 
+# Harness defaults apply to all agents using the respective harness
+codex_defaults:
+  model: gpt-5.4
+  reasoning: high
+  max_turns: 20
+  thread_sandbox: workspace-write
+
+claude_defaults:
+  model: opus-4.6
+  reasoning: high
+  max_turns: 1
+
 sources:
   - name: project-a
     tracker: gitlab
@@ -77,7 +102,16 @@ agent_types:
     agent_pack: repo-maintainer
     instance_name: maintainer
     approval_policy: manual
+    claude:                          # per-agent override wins over claude_defaults
+      model: sonnet-4.5
 ```
+
+Harness config resolution order:
+
+1. Per-agent `codex:` or `claude:` block (highest priority)
+2. Pack `codex:` or `claude:` block
+3. Top-level `codex_defaults` or `claude_defaults`
+4. Built-in defaults
 
 Resolution rules:
 
@@ -140,6 +174,12 @@ Pack and config values are combined for:
 - `skills`
 - `context_files`
 
+`codex:` and `claude:` blocks from packs provide harness-specific defaults. Per-agent type overrides
+in `maestro.yaml` win over pack values for the same harness block. Top-level `codex_defaults` and
+`claude_defaults` fill any remaining gaps.
+
+Claude is currently single-turn only. The effective `claude.max_turns` must resolve to `1`.
+
 Loaded context file contents are concatenated into `.Agent.Context` for prompt templates.
 
 For repo-embedded packs, resolution happens in two phases:
@@ -176,6 +216,19 @@ Useful `.Agent` fields now include:
 - `.Agent.ApprovalPolicy`
 - `.Agent.ApprovalTimeout`
 
+Template FuncMap helpers:
+
+| Helper | Usage | Description |
+|---|---|---|
+| `default` | `{{default "none" .Issue.Description}}` | Returns first arg if second is empty/nil |
+| `join` | `{{join .Issue.Labels ", "}}` | Join string slice with separator |
+| `lower` | `{{lower .Issue.State}}` | Lowercase |
+| `upper` | `{{upper .Issue.State}}` | Uppercase |
+| `trim` | `{{trim .Issue.Title}}` | Trim whitespace |
+| `contains` | `{{if contains .Issue.Title "bug"}}` | String contains check |
+| `hasPrefix` | `{{if hasPrefix .Issue.Identifier "ENG-"}}` | String prefix check |
+| `indent` | `{{indent 4 .Issue.Description}}` | Indent each line by N spaces |
+
 ## Approval Timeout
 
 `approval_timeout` is configurable per agent type and defaults to `24h`.
@@ -207,6 +260,7 @@ This is still valuable because it gives you one place to encode:
 The repo now ships with:
 
 - [agents/code-pr/agent.yaml](../agents/code-pr/agent.yaml)
+- [agents/dev-codex/agent.yaml](../agents/dev-codex/agent.yaml) — full Symphony-style Codex workflow
 - [agents/repo-maintainer/agent.yaml](../agents/repo-maintainer/agent.yaml)
 - [agents/triage/agent.yaml](../agents/triage/agent.yaml)
 

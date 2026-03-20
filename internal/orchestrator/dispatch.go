@@ -44,13 +44,15 @@ func (s *Service) dispatch(ctx context.Context, issue domain.Issue) error {
 	s.mu.Unlock()
 	_ = s.saveStateBestEffort()
 
+	prefix := s.labelPrefix()
+	dispatchTransition := config.ResolveDispatchTransition(s.cfg.Defaults.OnDispatch, s.source.OnDispatch)
 	s.recordRunEvent(run, "info", "dispatching %s to %s", issue.Identifier, run.AgentName)
 	s.applyTrackerLifecycle(ctx, issue.ID,
-		[]string{trackerbase.LifecycleLabelActive},
+		[]string{trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixActive)},
 		[]string{
-			trackerbase.LifecycleLabelRetry,
-			trackerbase.LifecycleLabelDone,
-			trackerbase.LifecycleLabelFailed,
+			trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixRetry),
+			trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixDone),
+			trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixFailed),
 		},
 		fmt.Sprintf(
 			"Maestro started workflow %s for %s with %s (attempt %d, run %s).",
@@ -61,6 +63,11 @@ func (s *Service) dispatch(ctx context.Context, issue domain.Issue) error {
 			run.ID,
 		),
 	)
+	if dispatchTransition != nil && strings.TrimSpace(dispatchTransition.State) != "" {
+		if err := s.tracker.UpdateIssueState(ctx, issue.ID, dispatchTransition.State); err != nil {
+			s.recordEvent("warn", "update issue state on dispatch for %s failed: %v", issue.ID, err)
+		}
+	}
 	s.refreshActiveRunIssue(ctx, run.ID)
 
 	s.runWG.Add(1)
@@ -114,6 +121,58 @@ func (s *Service) prepareAndStart(ctx context.Context, run *domain.AgentRun) err
 		return fmt.Errorf("render prompt: %w", err)
 	}
 
+	// Resolve harness-specific configuration
+	var model, reasoning, threadSandbox string
+	var maxTurns int
+	var turnSandboxPolicy map[string]any
+	var extraArgs []string
+
+	switch runtimeAgent.Harness {
+	case "codex":
+		resolved := config.ResolveCodexConfig(s.cfg.CodexDefaults, runtimeAgent.Codex)
+		model = resolved.Model
+		reasoning = resolved.Reasoning
+		maxTurns = resolved.MaxTurns
+		threadSandbox = resolved.ThreadSandbox
+		turnSandboxPolicy = resolved.TurnSandboxPolicy
+		extraArgs = resolved.ExtraArgs
+	case "claude-code":
+		resolved := config.ResolveClaudeConfig(s.cfg.ClaudeDefaults, runtimeAgent.Claude)
+		model = resolved.Model
+		reasoning = resolved.Reasoning
+		maxTurns = resolved.MaxTurns
+		extraArgs = resolved.ExtraArgs
+	}
+
+	// Build multi-turn continuation function
+	var continuationFunc func(ctx context.Context, turnNumber int) (string, bool, error)
+	if runtimeAgent.Harness == "codex" && maxTurns > 1 {
+		issueID := run.Issue.ID
+		prefix := s.labelPrefix()
+		activeLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixActive)
+		sourceFilter := s.source.Filter
+		continuationFunc = func(ctx context.Context, turnNumber int) (string, bool, error) {
+			issue, err := s.tracker.Get(ctx, issueID)
+			if err != nil {
+				return "", false, err
+			}
+			if trackerbase.IsTerminal(issue) {
+				return "", false, nil
+			}
+			if trackerbase.LifecycleLabelStateWithPrefix(issue.Labels, prefix) != activeLabel {
+				return "", false, nil
+			}
+			if !trackerbase.MatchesFilterWithPrefix(issue, sourceFilter, prefix) {
+				return "", false, nil
+			}
+			prompt := fmt.Sprintf(
+				"Continuation turn %d of %d. Issue is still in active state %q.\nResume from current workspace state. Do not restate prior instructions.",
+				turnNumber+1, maxTurns, issue.State,
+			)
+			return prompt, true, nil
+		}
+	}
+
 	s.initRunOutput(run.ID)
 	defer s.clearRunOutput(run.ID)
 
@@ -130,13 +189,20 @@ func (s *Service) prepareAndStart(ctx context.Context, run *domain.AgentRun) err
 		append:  func(p []byte) { s.appendRunOutput(run.ID, "stderr", p) },
 	}
 	active, err := s.harness.Start(ctx, harness.RunConfig{
-		RunID:          run.ID,
-		Prompt:         renderedPrompt,
-		Workdir:        prepared.Path,
-		ApprovalPolicy: run.ApprovalPolicy,
-		Env:            runtimeAgent.Env,
-		Stdout:         stdoutWriter,
-		Stderr:         stderrWriter,
+		RunID:             run.ID,
+		Prompt:            renderedPrompt,
+		Workdir:           prepared.Path,
+		ApprovalPolicy:    run.ApprovalPolicy,
+		Env:               runtimeAgent.Env,
+		Stdout:            stdoutWriter,
+		Stderr:            stderrWriter,
+		Model:             model,
+		Reasoning:         reasoning,
+		MaxTurns:          maxTurns,
+		ExtraArgs:         extraArgs,
+		ThreadSandbox:     threadSandbox,
+		TurnSandboxPolicy: turnSandboxPolicy,
+		ContinuationFunc:  continuationFunc,
 	})
 	if err != nil {
 		return fmt.Errorf("start harness: %w", sanitizeError(err))
@@ -285,13 +351,19 @@ func (s *Service) completeRun(runID string) {
 	}
 	s.mu.Unlock()
 
+	prefix := s.labelPrefix()
+	onComplete := config.ResolveLifecycleTransition(s.cfg.Defaults.OnComplete, s.source.OnComplete)
+	onFailure := config.ResolveLifecycleTransition(s.cfg.Defaults.OnFailure, s.source.OnFailure)
+	activeLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixActive)
+	retryLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixRetry)
+	doneLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixDone)
+	failedLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixFailed)
+
 	if scheduledRetry {
 		s.recordRunEventByFields("warn", s.source.Name, runID, issueIdentifier, "run %s stopped: %s; retry %d scheduled for %s", runID, comment, retry.Attempt, retry.DueAt.Format(time.RFC3339))
 		if issueID != "" {
-			s.applyTrackerLifecycle(context.Background(), issueID, []string{trackerbase.LifecycleLabelRetry}, []string{
-				trackerbase.LifecycleLabelActive,
-				trackerbase.LifecycleLabelDone,
-				trackerbase.LifecycleLabelFailed,
+			s.applyTrackerLifecycle(context.Background(), issueID, []string{retryLabel}, []string{
+				activeLabel, doneLabel, failedLabel,
 			}, fmt.Sprintf("Maestro run %s stopped and retry %d is scheduled: %s", runID, retry.Attempt, comment))
 			s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		}
@@ -302,14 +374,13 @@ func (s *Service) completeRun(runID string) {
 
 	s.recordRunEventByFields("info", s.source.Name, runID, issueIdentifier, "run %s completed", runID)
 	if issueID != "" {
-		add := []string{trackerbase.LifecycleLabelDone}
 		if status == domain.RunStatusFailed {
-			add = []string{trackerbase.LifecycleLabelFailed}
+			// Stopped with failed status — use on_failure if configured, else default
+			s.applyTerminalLifecycle(context.Background(), issueID, onFailure, prefix, failedLabel, comment)
+		} else {
+			// Success — use on_complete if configured, else default
+			s.applyTerminalLifecycle(context.Background(), issueID, onComplete, prefix, doneLabel, comment)
 		}
-		s.applyTrackerLifecycle(context.Background(), issueID, add, []string{
-			trackerbase.LifecycleLabelActive,
-			trackerbase.LifecycleLabelRetry,
-		}, comment)
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		s.recordRunEventByFields("info", s.source.Name, runID, issueIdentifier, "tracker state updated for %s", issueIdentifier)
 	}
@@ -373,13 +444,19 @@ func (s *Service) failRun(runID string, err error) {
 	}
 	s.mu.Unlock()
 
+	prefix := s.labelPrefix()
+	onComplete := config.ResolveLifecycleTransition(s.cfg.Defaults.OnComplete, s.source.OnComplete)
+	onFailure := config.ResolveLifecycleTransition(s.cfg.Defaults.OnFailure, s.source.OnFailure)
+	activeLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixActive)
+	retryLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixRetry)
+	doneLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixDone)
+	failedLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixFailed)
+
 	if plannedStop {
 		if stop.Retry {
 			s.recordRunEventByFields("warn", s.source.Name, runID, issueIdentifier, "run %s stopped: %s; retry %d scheduled for %s", runID, stop.Reason, retry.Attempt, retry.DueAt.Format(time.RFC3339))
-			s.applyTrackerLifecycle(context.Background(), issueID, []string{trackerbase.LifecycleLabelRetry}, []string{
-				trackerbase.LifecycleLabelActive,
-				trackerbase.LifecycleLabelDone,
-				trackerbase.LifecycleLabelFailed,
+			s.applyTrackerLifecycle(context.Background(), issueID, []string{retryLabel}, []string{
+				activeLabel, doneLabel, failedLabel,
 			}, fmt.Sprintf("Maestro run %s stopped and retry %d is scheduled: %s", runID, retry.Attempt, stop.Reason))
 			s.refreshStoredIssueTimestamp(context.Background(), issueID)
 			s.releaseClaim(issueID)
@@ -390,14 +467,11 @@ func (s *Service) failRun(runID string, err error) {
 			return
 		}
 		s.recordRunEventByFields("warn", s.source.Name, runID, issueIdentifier, "run %s stopped: %s", runID, stop.Reason)
-		add := []string{trackerbase.LifecycleLabelDone}
 		if stop.Status == domain.RunStatusFailed {
-			add = []string{trackerbase.LifecycleLabelFailed}
+			s.applyTerminalLifecycle(context.Background(), issueID, onFailure, prefix, failedLabel, stop.Reason)
+		} else {
+			s.applyTerminalLifecycle(context.Background(), issueID, onComplete, prefix, doneLabel, stop.Reason)
 		}
-		s.applyTrackerLifecycle(context.Background(), issueID, add, []string{
-			trackerbase.LifecycleLabelActive,
-			trackerbase.LifecycleLabelRetry,
-		}, stop.Reason)
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		s.releaseClaim(issueID)
 		if s.limiter != nil {
@@ -408,10 +482,8 @@ func (s *Service) failRun(runID string, err error) {
 	}
 	if scheduledRetry {
 		s.recordRunEventByFields("warn", s.source.Name, runID, issueIdentifier, "run %s failed: %v; retry %d scheduled for %s", runID, err, retry.Attempt, retry.DueAt.Format(time.RFC3339))
-		s.applyTrackerLifecycle(context.Background(), issueID, []string{trackerbase.LifecycleLabelRetry}, []string{
-			trackerbase.LifecycleLabelActive,
-			trackerbase.LifecycleLabelDone,
-			trackerbase.LifecycleLabelFailed,
+		s.applyTrackerLifecycle(context.Background(), issueID, []string{retryLabel}, []string{
+			activeLabel, doneLabel, failedLabel,
 		}, fmt.Sprintf("Maestro run %s failed and retry %d is scheduled: %v", runID, retry.Attempt, err))
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		s.releaseClaim(issueID)
@@ -423,11 +495,7 @@ func (s *Service) failRun(runID string, err error) {
 	}
 	s.recordRunEventByFields("error", s.source.Name, runID, issueIdentifier, "run %s failed: %v", runID, err)
 	if issueID != "" {
-		s.applyTrackerLifecycle(context.Background(), issueID, []string{trackerbase.LifecycleLabelFailed}, []string{
-			trackerbase.LifecycleLabelActive,
-			trackerbase.LifecycleLabelRetry,
-			trackerbase.LifecycleLabelDone,
-		}, fmt.Sprintf("Maestro run %s failed for %s: %v", runID, issueIdentifier, err))
+		s.applyTerminalLifecycle(context.Background(), issueID, onFailure, prefix, failedLabel, fmt.Sprintf("Maestro run %s failed for %s: %v", runID, issueIdentifier, err))
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 	}
 	s.releaseClaim(issueID)

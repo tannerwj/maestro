@@ -31,6 +31,11 @@ type claudeRun struct {
 	stderr         io.Writer
 	approvalPolicy string
 
+	// Harness config
+	model     string
+	reasoning string
+	extraArgs []string
+
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -84,6 +89,9 @@ func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.Act
 		stdout:         writerOrDiscard(cfg.Stdout),
 		stderr:         writerOrDiscard(cfg.Stderr),
 		approvalPolicy: cfg.ApprovalPolicy,
+		model:          cfg.Model,
+		reasoning:      cfg.Reasoning,
+		extraArgs:      cfg.ExtraArgs,
 		ctx:            runCtx,
 		cancel:         cancel,
 		decisionCh:     make(chan harness.ApprovalDecision, 1),
@@ -190,13 +198,21 @@ func (r *claudeRun) execute(binary string, approvals chan<- harness.ApprovalRequ
 }
 
 func (r *claudeRun) runDetection(binary string) (*harness.ApprovalRequest, error) {
-	cmd := exec.CommandContext(r.ctx, binary,
+	args := []string{
 		"--print",
 		"--verbose",
 		"--output-format", "stream-json",
 		"--permission-mode", "default",
 		"--add-dir", r.workdir,
-	)
+	}
+	if r.model != "" {
+		args = append(args, "--model", r.model)
+	}
+	if r.reasoning != "" {
+		args = append(args, "--config", "model_reasoning_effort="+r.reasoning)
+	}
+	args = append(args, r.extraArgs...)
+	cmd := exec.CommandContext(r.ctx, binary, args...)
 	cmd.Dir = r.workdir
 	cmd.Stdin = strings.NewReader(r.prompt)
 	cmd.Env = harness.MergeEnv(r.env)
@@ -254,13 +270,21 @@ func (r *claudeRun) runDetection(binary string) (*harness.ApprovalRequest, error
 }
 
 func (r *claudeRun) runPermissive(binary string, permissionMode string) error {
-	cmd := exec.CommandContext(r.ctx, binary,
+	args := []string{
 		"--print",
 		"--verbose",
 		"--output-format", "stream-json",
 		"--permission-mode", permissionMode,
 		"--add-dir", r.workdir,
-	)
+	}
+	if r.model != "" {
+		args = append(args, "--model", r.model)
+	}
+	if r.reasoning != "" {
+		args = append(args, "--config", "model_reasoning_effort="+r.reasoning)
+	}
+	args = append(args, r.extraArgs...)
+	cmd := exec.CommandContext(r.ctx, binary, args...)
 	cmd.Dir = r.workdir
 	cmd.Stdin = strings.NewReader(r.prompt)
 	cmd.Env = harness.MergeEnv(r.env)

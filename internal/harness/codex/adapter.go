@@ -32,6 +32,21 @@ type codexRun struct {
 	stdin          io.WriteCloser
 	stdout         io.ReadCloser
 
+	// Harness config
+	model             string
+	reasoning         string
+	maxTurns          int
+	extraArgs         []string
+	threadSandbox     string
+	turnSandboxPolicy map[string]any
+	continuationFunc  func(ctx context.Context, turnNumber int) (string, bool, error)
+
+	// Multi-turn state
+	threadID   string
+	cwd        string
+	turnNumber int
+	ctx        context.Context
+
 	writeMu sync.Mutex
 
 	reqMu   sync.Mutex
@@ -153,7 +168,17 @@ func (a *Adapter) Kind() string {
 }
 
 func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.ActiveRun, error) {
-	cmd := exec.CommandContext(ctx, a.binary, "app-server", "--listen", "stdio://")
+	args := []string{}
+	if cfg.Model != "" {
+		args = append(args, "--model", cfg.Model)
+	}
+	if cfg.Reasoning != "" {
+		args = append(args, "--config", "model_reasoning_effort="+cfg.Reasoning)
+	}
+	args = append(args, cfg.ExtraArgs...)
+	args = append(args, "app-server", "--listen", "stdio://")
+
+	cmd := exec.CommandContext(ctx, a.binary, args...)
 	cmd.Dir = cfg.Workdir
 	cmd.Env = harness.MergeEnv(cfg.Env)
 
@@ -171,16 +196,25 @@ func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.Act
 	}
 
 	run := &codexRun{
-		runID:           cfg.RunID,
-		approvalPolicy:  cfg.ApprovalPolicy,
-		cmd:             cmd,
-		stdin:           stdin,
-		stdout:          stdout,
-		pending:         map[int64]chan rpcResponse{},
-		pendingApproval: map[string]pendingApproval{},
-		pendingMessage:  map[string]pendingMessage{},
-		doneCh:          make(chan error, 1),
-		processCh:       make(chan error, 1),
+		runID:             cfg.RunID,
+		approvalPolicy:    cfg.ApprovalPolicy,
+		cmd:               cmd,
+		stdin:             stdin,
+		stdout:            stdout,
+		model:             cfg.Model,
+		reasoning:         cfg.Reasoning,
+		maxTurns:          cfg.MaxTurns,
+		extraArgs:         cfg.ExtraArgs,
+		threadSandbox:     cfg.ThreadSandbox,
+		turnSandboxPolicy: cfg.TurnSandboxPolicy,
+		continuationFunc:  cfg.ContinuationFunc,
+		turnNumber:        1,
+		ctx:               ctx,
+		pending:           map[int64]chan rpcResponse{},
+		pendingApproval:   map[string]pendingApproval{},
+		pendingMessage:    map[string]pendingMessage{},
+		doneCh:            make(chan error, 1),
+		processCh:         make(chan error, 1),
 	}
 
 	if err := cmd.Start(); err != nil {
@@ -209,6 +243,8 @@ func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.Act
 		a.cleanup(cfg.RunID)
 		return nil, err
 	}
+	run.threadID = threadID
+	run.cwd = cfg.Workdir
 	if _, err := run.startTurn(threadID, cfg.Workdir, cfg.Prompt); err != nil {
 		a.cleanup(cfg.RunID)
 		return nil, err
@@ -310,13 +346,17 @@ func (r *codexRun) initialize() error {
 }
 
 func (r *codexRun) startThread(cwd string) (string, error) {
+	sandbox := codexSandboxMode(r.approvalPolicy)
+	if r.threadSandbox != "" {
+		sandbox = r.threadSandbox
+	}
 	var resp threadStartResponse
 	if err := r.request("thread/start", map[string]any{
 		"cwd":            cwd,
 		"ephemeral":      true,
 		"approvalPolicy": codexApprovalPolicy(r.approvalPolicy),
 		"personality":    "pragmatic",
-		"sandbox":        codexSandboxMode(r.approvalPolicy),
+		"sandbox":        sandbox,
 	}, &resp); err != nil {
 		return "", fmt.Errorf("thread/start: %w", err)
 	}
@@ -327,12 +367,16 @@ func (r *codexRun) startThread(cwd string) (string, error) {
 }
 
 func (r *codexRun) startTurn(threadID string, cwd string, prompt string) (string, error) {
+	policy := codexSandboxPolicy(r.approvalPolicy, cwd)
+	if r.turnSandboxPolicy != nil {
+		policy = r.turnSandboxPolicy
+	}
 	var resp turnStartResponse
 	if err := r.request("turn/start", map[string]any{
 		"threadId":       threadID,
 		"cwd":            cwd,
 		"approvalPolicy": codexApprovalPolicy(r.approvalPolicy),
-		"sandboxPolicy":  codexSandboxPolicy(r.approvalPolicy, cwd),
+		"sandboxPolicy":  policy,
 		"input": []map[string]any{
 			{
 				"type": "text",
@@ -385,7 +429,25 @@ func (r *codexRun) handleNotification(method string, params json.RawMessage, std
 		}
 		switch msg.Turn.Status {
 		case "completed":
-			r.finish(nil)
+			if r.maxTurns <= 1 || r.turnNumber >= r.maxTurns || r.continuationFunc == nil {
+				r.finish(nil)
+				return
+			}
+			go func() {
+				prompt, cont, err := r.continuationFunc(r.ctx, r.turnNumber)
+				if err != nil {
+					r.finish(fmt.Errorf("continuation check: %w", err))
+					return
+				}
+				if !cont {
+					r.finish(nil)
+					return
+				}
+				r.turnNumber++
+				if _, err := r.startTurn(r.threadID, r.cwd, prompt); err != nil {
+					r.finish(fmt.Errorf("start continuation turn: %w", err))
+				}
+			}()
 		case "failed":
 			if msg.Turn.Error != nil && msg.Turn.Error.Message != "" {
 				r.finish(fmt.Errorf("codex turn failed: %s", msg.Turn.Error.Message))

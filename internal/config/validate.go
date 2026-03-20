@@ -58,6 +58,30 @@ func ValidateMVP(cfg *Config) error {
 		if agent.Harness != "claude-code" && agent.Harness != "codex" {
 			return fmt.Errorf("agent %q requires harness claude-code or codex", agent.Name)
 		}
+		if agent.Harness == "codex" && agent.Claude != nil {
+			return fmt.Errorf("agent %q has harness codex but includes claude config", agent.Name)
+		}
+		if agent.Harness == "claude-code" && agent.Codex != nil {
+			return fmt.Errorf("agent %q has harness claude-code but includes codex config", agent.Name)
+		}
+		if cfg.CodexDefaults != nil && cfg.CodexDefaults.MaxTurns < 0 {
+			return fmt.Errorf("codex_defaults max_turns must be at least 1")
+		}
+		if cfg.ClaudeDefaults != nil && cfg.ClaudeDefaults.MaxTurns < 0 {
+			return fmt.Errorf("claude_defaults max_turns must be at least 1")
+		}
+		if agent.Codex != nil && agent.Codex.MaxTurns < 0 {
+			return fmt.Errorf("agent %q codex max_turns must be at least 1", agent.Name)
+		}
+		if agent.Claude != nil && agent.Claude.MaxTurns < 0 {
+			return fmt.Errorf("agent %q claude max_turns must be at least 1", agent.Name)
+		}
+		if agent.Harness == "claude-code" {
+			resolved := ResolveClaudeConfig(cfg.ClaudeDefaults, agent.Claude)
+			if resolved.MaxTurns != 1 {
+				return fmt.Errorf("agent %q claude max_turns must be exactly 1 until multi-turn claude support exists", agent.Name)
+			}
+		}
 		if !slices.Contains([]string{"git-clone", "none"}, agent.Workspace) {
 			return fmt.Errorf("agent %q requires workspace git-clone or none", agent.Name)
 		}
@@ -103,6 +127,17 @@ func ValidateMVP(cfg *Config) error {
 				}
 			}
 		}
+	}
+
+	if strings.TrimSpace(cfg.Defaults.LabelPrefix) == "" {
+		return fmt.Errorf("defaults.label_prefix must be non-empty")
+	}
+	reservedLabels := reservedLifecycleLabels(cfg.Defaults.LabelPrefix)
+	if err := validateLifecycleTransition("defaults.on_complete", cfg.Defaults.OnComplete, reservedLabels); err != nil {
+		return err
+	}
+	if err := validateLifecycleTransition("defaults.on_failure", cfg.Defaults.OnFailure, reservedLabels); err != nil {
+		return err
 	}
 
 	sourceNames := map[string]struct{}{}
@@ -156,6 +191,9 @@ func ValidateMVP(cfg *Config) error {
 		}
 		if source.EffectiveMaxAttempts(cfg.State) < 1 {
 			return fmt.Errorf("source %q max_attempts must be at least 1", source.Name)
+		}
+		if err := validateLifecycleLabels(source, cfg.Defaults.OnComplete, cfg.Defaults.OnFailure, reservedLabels); err != nil {
+			return err
 		}
 	}
 	if strings.TrimSpace(cfg.State.Dir) == "" {
@@ -236,4 +274,40 @@ func validateRepoURL(raw string) error {
 
 func requiresSourceRepo(workspace string, tracker string) bool {
 	return workspace == "git-clone" && (tracker == "linear" || tracker == "gitlab-epic")
+}
+
+func reservedLifecycleLabels(prefix string) map[string]struct{} {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		prefix = "maestro"
+	}
+	return map[string]struct{}{
+		prefix + ":active": {},
+		prefix + ":retry":  {},
+		prefix + ":done":   {},
+		prefix + ":failed": {},
+	}
+}
+
+func validateLifecycleLabels(source SourceConfig, defaultComplete *LifecycleTransition, defaultFailure *LifecycleTransition, reserved map[string]struct{}) error {
+	if err := validateLifecycleTransition(fmt.Sprintf("source %q on_complete", source.Name), ResolveLifecycleTransition(defaultComplete, source.OnComplete), reserved); err != nil {
+		return err
+	}
+	if err := validateLifecycleTransition(fmt.Sprintf("source %q on_failure", source.Name), ResolveLifecycleTransition(defaultFailure, source.OnFailure), reserved); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateLifecycleTransition(name string, transition *LifecycleTransition, reserved map[string]struct{}) error {
+	if transition == nil {
+		return nil
+	}
+	for _, label := range transition.AddLabels {
+		normalized := strings.ToLower(strings.TrimSpace(label))
+		if _, ok := reserved[normalized]; ok {
+			return fmt.Errorf("%s.add_labels must not include reserved lifecycle label %q", name, label)
+		}
+	}
+	return nil
 }

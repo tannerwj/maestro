@@ -6,14 +6,5 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: manual
 max_concurrent: 1
-tools:
-  - package managers
-  - formatters
-  - linters
-  - test runners
-skills:
-  - maintenance planning
-  - dependency hygiene
-  - minimal-risk changes
 context_files:
   - context.md

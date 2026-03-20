@@ -6,13 +6,5 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 1
-tools:
-  - git
-  - repo test commands
-  - existing build scripts
-skills:
-  - narrow diffs
-  - repository conventions
-  - verification before handoff
 context_files:
   - context.md

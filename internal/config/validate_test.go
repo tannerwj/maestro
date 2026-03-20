@@ -10,6 +10,14 @@ import (
 	"github.com/tjohnson/maestro/internal/config"
 )
 
+func testDefaults(maxConcurrent int) config.DefaultsConfig {
+	return config.DefaultsConfig{
+		MaxConcurrentGlobal: maxConcurrent,
+		StallTimeout:        config.Duration{Duration: time.Minute},
+		LabelPrefix:         "maestro",
+	}
+}
+
 func TestValidateMVPRejectsZeroGlobalConcurrency(t *testing.T) {
 	root := t.TempDir()
 	promptPath := filepath.Join(root, "prompt.md")
@@ -18,7 +26,7 @@ func TestValidateMVPRejectsZeroGlobalConcurrency(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 0, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(0),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -71,7 +79,7 @@ func TestValidateMVPAcceptsLinearCodexSource(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -119,7 +127,7 @@ func TestValidateMVPAcceptsWorkspaceNoneWithoutRepo(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -162,7 +170,7 @@ func TestValidateMVPAcceptsRepoPackWithoutPromptFile(t *testing.T) {
 	root := t.TempDir()
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -206,7 +214,7 @@ func TestValidateMVPRejectsRepoPackWithoutGitCloneWorkspace(t *testing.T) {
 	root := t.TempDir()
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -254,7 +262,7 @@ func TestValidateMVPAcceptsClaudeManualApproval(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -294,6 +302,162 @@ func TestValidateMVPAcceptsClaudeManualApproval(t *testing.T) {
 	}
 }
 
+func TestValidateMVPRejectsClaudeMultiTurnOverride(t *testing.T) {
+	root := t.TempDir()
+	promptPath := filepath.Join(root, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	cfg := &config.Config{
+		Defaults: testDefaults(1),
+		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
+		State: config.StateConfig{
+			Dir:             filepath.Join(root, "state"),
+			RetryBase:       config.Duration{Duration: time.Second},
+			MaxRetryBackoff: config.Duration{Duration: time.Minute},
+			MaxAttempts:     3,
+		},
+		Sources: []config.SourceConfig{
+			{
+				Name:      "platform-dev",
+				Tracker:   "gitlab",
+				AgentType: "code-pr",
+				Connection: config.SourceConnection{
+					BaseURL: "https://gitlab.example.com",
+					Project: "team/project",
+					Token:   "token",
+				},
+				Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
+			},
+		},
+		AgentTypes: []config.AgentTypeConfig{
+			{
+				Name:            "code-pr",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "manual",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
+				Claude: &config.ClaudeConfig{
+					MaxTurns: 2,
+				},
+			},
+		},
+	}
+
+	err := config.ValidateMVP(cfg)
+	if err == nil || !strings.Contains(err.Error(), "must be exactly 1") {
+		t.Fatalf("validation error = %v, want claude single-turn error", err)
+	}
+}
+
+func TestValidateMVPRejectsClaudeDefaultsMultiTurn(t *testing.T) {
+	root := t.TempDir()
+	promptPath := filepath.Join(root, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	cfg := &config.Config{
+		Defaults: testDefaults(1),
+		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
+		State: config.StateConfig{
+			Dir:             filepath.Join(root, "state"),
+			RetryBase:       config.Duration{Duration: time.Second},
+			MaxRetryBackoff: config.Duration{Duration: time.Minute},
+			MaxAttempts:     3,
+		},
+		ClaudeDefaults: &config.ClaudeConfig{
+			MaxTurns: 2,
+		},
+		Sources: []config.SourceConfig{
+			{
+				Name:      "platform-dev",
+				Tracker:   "gitlab",
+				AgentType: "code-pr",
+				Connection: config.SourceConnection{
+					BaseURL: "https://gitlab.example.com",
+					Project: "team/project",
+					Token:   "token",
+				},
+				Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
+			},
+		},
+		AgentTypes: []config.AgentTypeConfig{
+			{
+				Name:            "code-pr",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "manual",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
+			},
+		},
+	}
+
+	err := config.ValidateMVP(cfg)
+	if err == nil || !strings.Contains(err.Error(), "must be exactly 1") {
+		t.Fatalf("validation error = %v, want claude single-turn error", err)
+	}
+}
+
+func TestValidateMVPRejectsReservedLifecycleLabelsInCustomTransitions(t *testing.T) {
+	root := t.TempDir()
+	promptPath := filepath.Join(root, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	cfg := &config.Config{
+		Defaults: testDefaults(1),
+		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
+		State: config.StateConfig{
+			Dir:             filepath.Join(root, "state"),
+			RetryBase:       config.Duration{Duration: time.Second},
+			MaxRetryBackoff: config.Duration{Duration: time.Minute},
+			MaxAttempts:     3,
+		},
+		Sources: []config.SourceConfig{
+			{
+				Name:      "platform-dev",
+				Tracker:   "gitlab",
+				AgentType: "code-pr",
+				Connection: config.SourceConnection{
+					BaseURL: "https://gitlab.example.com",
+					Project: "team/project",
+					Token:   "token",
+				},
+				Filter: config.FilterConfig{Labels: []string{"maestro:coding"}},
+				OnComplete: &config.LifecycleTransition{
+					AddLabels: []string{"maestro:done"},
+				},
+			},
+		},
+		AgentTypes: []config.AgentTypeConfig{
+			{
+				Name:            "code-pr",
+				Harness:         "codex",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
+			},
+		},
+	}
+
+	err := config.ValidateMVP(cfg)
+	if err == nil || !strings.Contains(err.Error(), "reserved lifecycle label") {
+		t.Fatalf("validation error = %v, want reserved lifecycle label error", err)
+	}
+}
+
 func TestValidateMVPRejectsZeroApprovalTimeout(t *testing.T) {
 	root := t.TempDir()
 	promptPath := filepath.Join(root, "prompt.md")
@@ -302,7 +466,7 @@ func TestValidateMVPRejectsZeroApprovalTimeout(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -351,7 +515,7 @@ func TestValidateMVPAcceptsGitLabEpicSource(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -400,7 +564,7 @@ func TestValidateMVPAcceptsSlackCommunicationChannel(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -453,7 +617,7 @@ func TestValidateMVPRejectsUnknownCommunicationChannel(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -502,7 +666,7 @@ func TestValidateMVPRejectsInvalidEnabledServerConfig(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -555,7 +719,7 @@ func TestValidateMVPRejectsCredentialBearingRepoURL(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -608,7 +772,7 @@ func TestValidateMVPRejectsMalformedPromptTemplate(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -660,7 +824,7 @@ func TestValidateMVPRejectsInvalidSourceRetryPolicy(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -714,7 +878,7 @@ func TestValidateMVPAcceptsMultipleSourcesAndAgents(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -783,7 +947,7 @@ func TestValidateMVPRejectsGitLabEpicAssigneeOnEpicFilter(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),
@@ -839,7 +1003,7 @@ func TestValidateMVPAcceptsGitLabEpicIIDFilter(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Defaults: testDefaults(1),
 		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
 		State: config.StateConfig{
 			Dir:             filepath.Join(root, "state"),

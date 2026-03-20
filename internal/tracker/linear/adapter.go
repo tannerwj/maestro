@@ -216,7 +216,7 @@ func (a *Adapter) Poll(ctx context.Context) ([]domain.Issue, error) {
 
 		for _, item := range resp.Issues.Nodes {
 			issue := a.normalizeIssue(item)
-			if trackerbase.IsCandidate(issue, a.source.Filter) {
+			if trackerbase.IsCandidateWithPrefix(issue, a.source.Filter, a.source.LabelPrefix) {
 				out = append(out, issue)
 			}
 		}
@@ -299,6 +299,12 @@ func (a *Adapter) AddLifecycleLabel(ctx context.Context, issueID string, label s
 
 func (a *Adapter) RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error {
 	return a.updateLifecycleLabel(ctx, issueID, label, issueRemoveLabelMutation)
+}
+
+// UpdateIssueState is a no-op for Linear; changing workflow states requires
+// looking up team-specific workflow state IDs via GraphQL which is deferred.
+func (a *Adapter) UpdateIssueState(_ context.Context, _ string, _ string) error {
+	return nil
 }
 
 func (a *Adapter) normalizeIssue(item issueNode) domain.Issue {

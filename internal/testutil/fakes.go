@@ -102,6 +102,11 @@ func (f *FakeTracker) bumpUpdatedAt(issueID string) {
 	}
 }
 
+func (f *FakeTracker) UpdateIssueState(_ context.Context, issueID string, stateName string) error {
+	f.SetIssueState(issueID, stateName)
+	return nil
+}
+
 func (f *FakeTracker) SetIssueState(issueID string, state string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

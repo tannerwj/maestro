@@ -70,6 +70,18 @@ Important directories:
 - `logging.dir`: log files
 - `logging.max_files`: local log retention cap; older `*.log` files are pruned on startup
 
+Lifecycle labels use a configurable prefix set by `defaults.label_prefix` (default: `maestro`). The
+default labels are `{prefix}:active`, `{prefix}:done`, `{prefix}:failed`, and `{prefix}:retry`.
+When `defaults.on_dispatch`, `defaults.on_complete`, or `defaults.on_failure` are configured, those
+hooks apply to every source unless a source overrides the same hook locally. Custom labels from
+`add_labels`/`remove_labels` replace the built-in done/failed defaults, but `{prefix}:active` is
+always applied on dispatch and removed on completion or failure. See
+[getting-started.md](getting-started.md#lifecycle-transitions) for pipeline examples.
+Labels such as `{prefix}:coding` or `{prefix}:review` are not reserved; they remain visible to
+source filters and are intended for pipeline routing. Only the exact reserved lifecycle labels are
+ignored by intake logic. Lifecycle `state` updates are best-effort tracker metadata and should not
+be used as the primary routing contract.
+
 If the config has multiple sources, Maestro stores state per source under:
 
 - `state.dir/<source-name>/runs.json`

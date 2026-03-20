@@ -325,6 +325,23 @@ Fields:
   - Maximum agent turns per session. Default: 20.
 - `env` (map of string to string, optional)
   - Additional environment variables to inject into the agent subprocess.
+- `codex` (map, optional)
+  - Harness-specific config for Codex agents. Only valid when `harness: codex`.
+  - `model` (string, optional): model name. Default from `codex_defaults.model` (`gpt-5.4`).
+  - `reasoning` (string, optional): reasoning effort. Default from `codex_defaults.reasoning` (`high`).
+  - `max_turns` (integer, optional): max continuation turns. Default from `codex_defaults.max_turns` (`20`).
+  - `thread_sandbox` (string, optional): Codex thread sandbox mode. Default from `codex_defaults.thread_sandbox` (`workspace-write`).
+  - `turn_sandbox_policy` (string, optional): Codex per-turn sandbox policy.
+  - `extra_args` (list of strings, optional): additional CLI arguments passed to the harness.
+- `claude` (map, optional)
+  - Harness-specific config for Claude Code agents. Only valid when `harness: claude-code`.
+  - `model` (string, optional): model name. Default from `claude_defaults.model` (`opus-4.6`).
+  - `reasoning` (string, optional): reasoning effort. Default from `claude_defaults.reasoning` (`high`).
+  - `max_turns` (integer, optional): max agent turns. Default from `claude_defaults.max_turns` (`1`). The effective value must currently be `1`; multi-turn Claude sessions are not yet supported.
+  - `extra_args` (list of strings, optional): additional CLI arguments passed to the harness.
+
+Cross-validation: `codex:` is rejected if `harness` is not `codex`. `claude:` is rejected if
+`harness` is not `claude-code`.
 
 Pack directories:
 
@@ -376,6 +393,96 @@ Fields:
   - Override the global maximum failure retry backoff for this source.
 - `max_attempts` (integer, optional)
   - Override the global maximum number of attempts for issues from this source.
+- `on_dispatch` (map, optional)
+  - Lifecycle transition hook executed when a run is dispatched.
+  - `state` (string, optional): best-effort tracker metadata update on dispatch. This is not part
+    of the portable routing contract.
+- `on_complete` (map, optional)
+  - Lifecycle transition hook executed when a run completes successfully.
+  - `add_labels` (list of strings, optional): labels to add to the tracker issue.
+  - `remove_labels` (list of strings, optional): labels to remove from the tracker issue.
+  - `state` (string, optional): best-effort tracker metadata update.
+  - When omitted, the default behavior adds `{prefix}:done` and removes `{prefix}:active`.
+- `on_failure` (map, optional)
+  - Lifecycle transition hook executed when a run fails.
+  - `add_labels` (list of strings, optional): labels to add to the tracker issue.
+  - `remove_labels` (list of strings, optional): labels to remove from the tracker issue.
+  - `state` (string, optional): best-effort tracker metadata update.
+  - When omitted, the default behavior adds `{prefix}:failed` and removes `{prefix}:active`.
+
+Lifecycle execution sequence:
+
+- **Dispatch**: add `{prefix}:active`, remove `{prefix}:retry`/`done`/`failed`, optionally change
+  state via `on_dispatch.state`.
+- **Complete (custom)**: remove `{prefix}:active`, add `on_complete.add_labels`, remove
+  `on_complete.remove_labels`, optionally change state.
+- **Complete (default)**: remove `{prefix}:active`, add `{prefix}:done`.
+- **Failure (custom)**: remove `{prefix}:active`, add `on_failure.add_labels`, remove
+  `on_failure.remove_labels`, optionally change state.
+- **Failure (default)**: remove `{prefix}:active`, add `{prefix}:failed`.
+- **Retry**: remove `{prefix}:active`, add `{prefix}:retry` (always default, not configurable).
+
+Global lifecycle defaults:
+
+- `defaults.on_dispatch`, `defaults.on_complete`, and `defaults.on_failure` apply to every source.
+- `sources[].on_dispatch`, `sources[].on_complete`, and `sources[].on_failure` override those
+  defaults for that source.
+- Resolution order is: source hook override -> global lifecycle default -> built-in behavior.
+- For a given hook, `state` overrides per field, while `add_labels` and `remove_labels` replace the
+  inherited lists when explicitly set.
+
+Reserved versus routing labels:
+
+- Exact reserved lifecycle labels are `{prefix}:active`, `{prefix}:done`, `{prefix}:failed`, and
+  `{prefix}:retry`.
+- Other labels in the same namespace such as `{prefix}:coding` or `{prefix}:review` are treated as
+  ordinary routing labels and remain visible to source filters.
+- Intake logic ignores the exact reserved lifecycle labels but does not strip or block other
+  `{prefix}:*` labels.
+- Tracker state changes in lifecycle hooks are best-effort metadata only; label transitions are the
+  orchestration contract.
+
+Pipeline example using lifecycle transitions to chain sources:
+
+```yaml
+defaults:
+  label_prefix: maestro
+  on_failure:
+    add_labels: [maestro:needs-attention]
+
+sources:
+  - name: coding
+    filter:
+      labels: [maestro:coding]
+    agent_type: dev-codex
+    on_complete:
+      add_labels: [maestro:review]
+      remove_labels: [maestro:coding]
+    on_failure:
+      add_labels: [maestro:coding-failed]
+      remove_labels: [maestro:coding]
+
+  - name: code-review
+    filter:
+      labels: [maestro:review]
+    agent_type: code-reviewer
+    on_complete:
+      add_labels: [maestro:security-review]
+      remove_labels: [maestro:review]
+    on_failure:
+      add_labels: [maestro:review-failed]
+      remove_labels: [maestro:review]
+
+  - name: security-review
+    filter:
+      labels: [maestro:security-review]
+    agent_type: security-reviewer
+    on_complete:
+      remove_labels: [maestro:security-review]
+    on_failure:
+      add_labels: [maestro:security-failed]
+      remove_labels: [maestro:security-review]
+```
 
 #### 4.1.4 Channel Definition
 
@@ -537,6 +644,21 @@ defaults:
   communication: slack-dm
   max_concurrent_global: 5
   max_turns: 20
+  label_prefix: maestro             # prefix for lifecycle labels (default: "maestro")
+  on_failure:
+    add_labels: [maestro:needs-attention]
+
+# Harness defaults (applied to all agents using the respective harness)
+codex_defaults:
+  model: gpt-5.4
+  reasoning: high
+  max_turns: 20
+  thread_sandbox: workspace-write
+
+claude_defaults:
+  model: opus-4.6
+  reasoning: high
+  max_turns: 1
 
 # User identity
 user:
@@ -558,6 +680,12 @@ sources:
     agent_type: firewall
     poll_interval: 30s
     max_attempts: 2
+    on_complete:
+      add_labels: [review-ready]
+      remove_labels: [agent:ready]
+    on_failure:
+      add_labels: [agent:failed]
+      remove_labels: [agent:ready]
 
   - name: platform-dev
     tracker: gitlab
@@ -605,6 +733,9 @@ agent_types:
     approval_policy: auto
     max_concurrent: 5
     credentials: user
+    claude:
+      model: opus-4.6
+      extra_args: ["--verbose"]
 
   - name: triage
     harness: claude-code
@@ -1050,6 +1181,9 @@ Approve(ctx, request, response) → error
 - **Environment**: inject configured tools, MCPs, and env vars.
 - **Completion detection**: process exit code + output parsing.
 - **Stall detection**: monitor process output; if no output for stall timeout, consider stalled.
+- **Harness config**: model, reasoning, max_turns, and extra_args are read from `claude_defaults`
+  merged with pack `claude:` defaults and then per-agent `claude:` overrides. Per-agent values win
+  over pack values, and pack values win over `claude_defaults`.
 
 #### 10.2.1 Claude Hook Approval Mechanism
 
@@ -1117,8 +1251,14 @@ Observability requirements:
 - **Protocol**: JSON-RPC-like app-server protocol.
   - `initialize` → `thread/start` → `turn/start` → stream events → turn completion.
 - **Approval interception**: the app-server protocol has native approval events.
-- **Multi-turn**: reuse thread ID for continuation turns within the same session.
+- **Multi-turn**: reuse thread ID for continuation turns within the same session. `max_turns` is
+  configurable (default: 20). Between turns, Maestro sends a continuation prompt that includes
+  refreshed issue state from the tracker. This allows Codex to react to label/state changes made by
+  the operator or other pipeline stages during a long-running session.
 - **Stall detection**: monitor codex events; no events for stall timeout → stalled.
+- **Harness config**: model, reasoning, max_turns, thread_sandbox, turn_sandbox_policy, and
+  extra_args are read from `codex_defaults` merged with per-agent `codex:` overrides. Per-agent
+  values win over defaults.
 
 ### 10.4 Future Harnesses
 
@@ -1143,7 +1283,13 @@ RemoveLifecycleLabel(ctx, issueID, label) → error
 Tracker write responsibility matrix:
 
 - Maestro-owned writes:
-  - Lifecycle labels used for orchestration state such as claimed, retrying, or handoff markers.
+  - Lifecycle labels used for orchestration state. The label prefix is configurable via
+    `defaults.label_prefix` (default: `maestro`). Default labels are `{prefix}:active`,
+    `{prefix}:done`, `{prefix}:failed`, and `{prefix}:retry`. When `on_complete` or `on_failure`
+    hooks are configured on a source, custom labels replace the defaults (except `{prefix}:active`
+    which is always applied on dispatch and removed on completion/failure). Other labels in the same
+    namespace such as `{prefix}:coding` are user-managed routing labels, not reserved lifecycle
+    labels.
   - Operational or audit comments emitted by the orchestrator such as agent started, approval
     requested, timed out, cancelled, or failed.
 - Agent-owned writes:

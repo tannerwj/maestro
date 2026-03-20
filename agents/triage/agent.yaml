@@ -6,13 +6,5 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 1
-tools:
-  - repository search
-  - test commands
-  - build commands
-skills:
-  - root-cause analysis
-  - repro isolation
-  - implementation planning
 context_files:
   - context.md

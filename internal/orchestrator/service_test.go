@@ -47,6 +47,9 @@ func (g getOnlyTracker) AddLifecycleLabel(ctx context.Context, issueID string, l
 func (g getOnlyTracker) RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error {
 	return nil
 }
+func (g getOnlyTracker) UpdateIssueState(ctx context.Context, issueID string, stateName string) error {
+	return nil
+}
 
 func TestServiceRunsIssueOncePerProcess(t *testing.T) {
 	cfg := testConfig(t)
@@ -1421,6 +1424,152 @@ func TestServiceCompletesRunWhenLifecycleSyncFails(t *testing.T) {
 	}
 }
 
+func TestServiceAppliesGlobalLifecycleDefaultsWhenSourceHooksAreUnset(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Defaults.LabelPrefix = "maestro"
+	cfg.Defaults.OnComplete = &config.LifecycleTransition{
+		AddLabels:    []string{"maestro:review"},
+		RemoveLabels: []string{"maestro:coding"},
+	}
+	repoURL := createGitRepo(t)
+
+	fakeTracker := &testutil.FakeTracker{
+		Issues: []domain.Issue{
+			{
+				ID:          "gitlab:team/project#59a",
+				Identifier:  "team/project#59a",
+				Title:       "Add feature",
+				State:       "todo",
+				Labels:      []string{"maestro:coding"},
+				SourceName:  cfg.Sources[0].Name,
+				TrackerKind: "gitlab",
+				Meta: map[string]string{
+					"repo_url": repoURL,
+				},
+			},
+		},
+	}
+	fakeHarness := &testutil.FakeHarness{}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   fakeTracker,
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun == nil
+	})
+
+	issue, err := fakeTracker.Get(context.Background(), "gitlab:team/project#59a")
+	if err != nil {
+		t.Fatalf("get issue: %v", err)
+	}
+	if slicesContains(issue.Labels, "maestro:active") {
+		t.Fatalf("labels = %v, active label should be removed on completion", issue.Labels)
+	}
+	if slicesContains(issue.Labels, "maestro:coding") {
+		t.Fatalf("labels = %v, coding label should be removed by global on_complete", issue.Labels)
+	}
+	if !slicesContains(issue.Labels, "maestro:review") {
+		t.Fatalf("labels = %v, review label should be added by global on_complete", issue.Labels)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
+func TestServiceCodexContinuationStopsWhenActiveLabelIsRemoved(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Defaults.LabelPrefix = "maestro"
+	cfg.Sources[0].Filter = config.FilterConfig{Labels: []string{"maestro:coding"}}
+	cfg.AgentTypes[0].Harness = "codex"
+	cfg.AgentTypes[0].Codex = &config.CodexConfig{MaxTurns: 3}
+	repoURL := createGitRepo(t)
+
+	fakeTracker := &testutil.FakeTracker{
+		Issues: []domain.Issue{
+			{
+				ID:          "gitlab:team/project#59b",
+				Identifier:  "team/project#59b",
+				Title:       "Continue work",
+				State:       "todo",
+				Labels:      []string{"maestro:coding"},
+				SourceName:  cfg.Sources[0].Name,
+				TrackerKind: "gitlab",
+				Meta: map[string]string{
+					"repo_url": repoURL,
+				},
+			},
+		},
+	}
+	fakeHarness := &testutil.FakeHarness{WaitBlock: make(chan struct{})}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   fakeTracker,
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun != nil
+	})
+
+	started := fakeHarness.StartedRuns[0]
+	if started.ContinuationFunc == nil {
+		t.Fatal("continuation func = nil, want codex continuation func")
+	}
+
+	prompt, cont, err := started.ContinuationFunc(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("continuation while active: %v", err)
+	}
+	if !cont {
+		t.Fatal("continuation while active = false, want true")
+	}
+	if !strings.Contains(prompt, "Continuation turn 2 of 3") {
+		t.Fatalf("continuation prompt = %q, want turn prompt", prompt)
+	}
+
+	if err := fakeTracker.RemoveLifecycleLabel(context.Background(), "gitlab:team/project#59b", "maestro:active"); err != nil {
+		t.Fatalf("remove active label: %v", err)
+	}
+
+	_, cont, err = started.ContinuationFunc(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("continuation after active removed: %v", err)
+	}
+	if cont {
+		t.Fatal("continuation after active removed = true, want false")
+	}
+
+	close(fakeHarness.WaitBlock)
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
 func TestServiceSchedulesRetryWhenLifecycleSyncFails(t *testing.T) {
 	cfg := testConfig(t)
 	cfg.State.RetryBase = config.Duration{Duration: time.Hour}
@@ -1643,6 +1792,15 @@ func testConfigWithRoot(t *testing.T, root string) *config.Config {
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func slicesContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func waitFor(t *testing.T, timeout time.Duration, check func() bool) {

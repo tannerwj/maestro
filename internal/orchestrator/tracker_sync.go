@@ -3,7 +3,9 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
 	trackerbase "github.com/tjohnson/maestro/internal/tracker"
 )
@@ -31,14 +33,18 @@ func (s *Service) reconcileActiveRun(ctx context.Context, polled []domain.Issue)
 		r.Issue = *current
 	})
 
+	prefix := s.labelPrefix()
+	doneLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixDone)
+	failedLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixFailed)
+
 	switch {
-	case trackerbase.LifecycleLabelState(current.Labels) == trackerbase.LifecycleLabelDone:
-		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusDone, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, trackerbase.LifecycleLabelDone))
-	case trackerbase.LifecycleLabelState(current.Labels) == trackerbase.LifecycleLabelFailed:
-		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusFailed, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, trackerbase.LifecycleLabelFailed))
+	case trackerbase.LifecycleLabelStateWithPrefix(current.Labels, prefix) == doneLabel:
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusDone, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, doneLabel))
+	case trackerbase.LifecycleLabelStateWithPrefix(current.Labels, prefix) == failedLabel:
+		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusFailed, fmt.Sprintf("issue %s marked %s in tracker", current.Identifier, failedLabel))
 	case trackerbase.IsTerminal(*current):
 		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusDone, fmt.Sprintf("issue %s became terminal in tracker", current.Identifier))
-	case !trackerbase.MatchesFilter(*current, s.source.Filter):
+	case !trackerbase.MatchesFilterWithPrefix(*current, s.source.Filter, prefix):
 		s.stopActiveRunFromTracker(ctx, run.ID, domain.RunStatusFailed, fmt.Sprintf("issue %s no longer matches source filter", current.Identifier))
 	}
 }
@@ -78,6 +84,29 @@ func (s *Service) applyTrackerLifecycle(ctx context.Context, issueID string, add
 			s.recordEvent("warn", "post operational comment on %s failed: %v", issueID, err)
 		}
 	}
+}
+
+// applyTerminalLifecycle applies a configurable lifecycle transition on completion or failure.
+// When transition is nil, it falls back to the default behavior: remove {prefix}:active and
+// add the provided defaultAdd label (typically {prefix}:done or {prefix}:failed).
+func (s *Service) applyTerminalLifecycle(ctx context.Context, issueID string, transition *config.LifecycleTransition, prefix string, defaultAdd string, comment string) {
+	activeLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixActive)
+	retryLabel := trackerbase.LifecycleLabel(prefix, trackerbase.LifecycleSuffixRetry)
+
+	if transition != nil {
+		remove := []string{activeLabel}
+		remove = append(remove, transition.RemoveLabels...)
+		s.applyTrackerLifecycle(ctx, issueID, transition.AddLabels, remove, comment)
+		if stateName := strings.TrimSpace(transition.State); stateName != "" {
+			if err := s.tracker.UpdateIssueState(ctx, issueID, stateName); err != nil {
+				s.recordEvent("warn", "update issue state for %s failed: %v", issueID, err)
+			}
+		}
+		return
+	}
+
+	// Default behavior
+	s.applyTrackerLifecycle(ctx, issueID, []string{defaultAdd}, []string{activeLabel, retryLabel}, comment)
 }
 
 func (s *Service) refreshStoredIssueTimestamp(ctx context.Context, issueID string) {

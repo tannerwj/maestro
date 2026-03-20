@@ -40,6 +40,10 @@ func (blockingPollTracker) RemoveLifecycleLabel(ctx context.Context, issueID str
 	return nil
 }
 
+func (blockingPollTracker) UpdateIssueState(ctx context.Context, issueID string, stateName string) error {
+	return nil
+}
+
 func TestTickBoundsPollWithTimeout(t *testing.T) {
 	oldTimeout := pollRequestTimeout
 	pollRequestTimeout = 50 * time.Millisecond

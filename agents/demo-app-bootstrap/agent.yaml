@@ -6,15 +6,5 @@ workspace: git-clone
 prompt: prompt.md
 approval_policy: auto
 max_concurrent: 1
-tools:
-  - git
-  - existing repo scripts
-  - narrow package manager commands
-  - targeted verification commands
-skills:
-  - minimal scaffolding
-  - explicit scope control
-  - blocker-first execution
-  - verification hygiene
 context_files:
   - context.md

@@ -13,4 +13,5 @@ type Tracker interface {
 	PostOperationalComment(ctx context.Context, issueID string, body string) error
 	AddLifecycleLabel(ctx context.Context, issueID string, label string) error
 	RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error
+	UpdateIssueState(ctx context.Context, issueID string, stateName string) error
 }

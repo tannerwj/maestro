@@ -7,6 +7,7 @@ import (
 	"github.com/tjohnson/maestro/internal/domain"
 )
 
+// Default lifecycle label constants (prefix "maestro").
 const (
 	LifecycleLabelActive = "maestro:active"
 	LifecycleLabelRetry  = "maestro:retry"
@@ -14,19 +15,64 @@ const (
 	LifecycleLabelFailed = "maestro:failed"
 )
 
+// Lifecycle label suffixes.
+const (
+	LifecycleSuffixActive = "active"
+	LifecycleSuffixDone   = "done"
+	LifecycleSuffixFailed = "failed"
+	LifecycleSuffixRetry  = "retry"
+)
+
+// LifecycleLabel constructs a lifecycle label from a prefix and suffix.
+func LifecycleLabel(prefix, suffix string) string {
+	return normalizeLifecyclePrefix(prefix) + ":" + suffix
+}
+
+// AllLifecycleLabels returns the four lifecycle labels for a given prefix.
+func AllLifecycleLabels(prefix string) []string {
+	return []string{
+		LifecycleLabel(prefix, LifecycleSuffixActive),
+		LifecycleLabel(prefix, LifecycleSuffixRetry),
+		LifecycleLabel(prefix, LifecycleSuffixDone),
+		LifecycleLabel(prefix, LifecycleSuffixFailed),
+	}
+}
+
+func normalizeLifecyclePrefix(prefix string) string {
+	if strings.TrimSpace(prefix) == "" {
+		return "maestro"
+	}
+	return strings.TrimSpace(prefix)
+}
+
 func HasBlockingLifecycleLabel(labels []string) bool {
-	return LifecycleLabelState(labels) != ""
+	return HasBlockingLifecycleLabelWithPrefix(labels, "maestro")
+}
+
+func HasBlockingLifecycleLabelWithPrefix(labels []string, prefix string) bool {
+	return LifecycleLabelStateWithPrefix(labels, prefix) != ""
 }
 
 func LifecycleLabelState(labels []string) string {
+	return LifecycleLabelStateWithPrefix(labels, "maestro")
+}
+
+func LifecycleLabelStateWithPrefix(labels []string, prefix string) string {
+	prefix = normalizeLifecyclePrefix(prefix)
+	active := LifecycleLabel(prefix, LifecycleSuffixActive)
+	retry := LifecycleLabel(prefix, LifecycleSuffixRetry)
+	done := LifecycleLabel(prefix, LifecycleSuffixDone)
+	failed := LifecycleLabel(prefix, LifecycleSuffixFailed)
+
 	seen := map[string]bool{}
 	for _, label := range labels {
-		switch normalized := strings.ToLower(strings.TrimSpace(label)); normalized {
-		case LifecycleLabelActive, LifecycleLabelRetry, LifecycleLabelDone, LifecycleLabelFailed:
+		normalized := strings.ToLower(strings.TrimSpace(label))
+		switch normalized {
+		case active, retry, done, failed:
 			seen[normalized] = true
 		}
 	}
-	for _, candidate := range []string{LifecycleLabelDone, LifecycleLabelFailed, LifecycleLabelRetry, LifecycleLabelActive} {
+	for _, candidate := range []string{done, failed, retry, active} {
 		if seen[candidate] {
 			return candidate
 		}
@@ -35,11 +81,21 @@ func LifecycleLabelState(labels []string) string {
 }
 
 func StripLifecycleLabels(labels []string) []string {
+	return StripLifecycleLabelsWithPrefix(labels, "maestro")
+}
+
+func StripLifecycleLabelsWithPrefix(labels []string, prefix string) []string {
+	prefix = normalizeLifecyclePrefix(prefix)
+	active := LifecycleLabel(prefix, LifecycleSuffixActive)
+	retry := LifecycleLabel(prefix, LifecycleSuffixRetry)
+	done := LifecycleLabel(prefix, LifecycleSuffixDone)
+	failed := LifecycleLabel(prefix, LifecycleSuffixFailed)
+
 	out := make([]string, 0, len(labels))
 	for _, label := range labels {
 		normalized := strings.ToLower(strings.TrimSpace(label))
 		switch normalized {
-		case LifecycleLabelActive, LifecycleLabelRetry, LifecycleLabelDone, LifecycleLabelFailed:
+		case active, retry, done, failed:
 			continue
 		default:
 			out = append(out, normalized)
@@ -49,7 +105,11 @@ func StripLifecycleLabels(labels []string) []string {
 }
 
 func MatchesFilter(issue domain.Issue, filter config.FilterConfig) bool {
-	labels := StripLifecycleLabels(issue.Labels)
+	return MatchesFilterWithPrefix(issue, filter, "maestro")
+}
+
+func MatchesFilterWithPrefix(issue domain.Issue, filter config.FilterConfig, prefix string) bool {
+	labels := StripLifecycleLabelsWithPrefix(issue.Labels, prefix)
 
 	if len(filter.Labels) > 0 {
 		set := make(map[string]struct{}, len(labels))
@@ -84,7 +144,11 @@ func MatchesFilter(issue domain.Issue, filter config.FilterConfig) bool {
 }
 
 func IsCandidate(issue domain.Issue, filter config.FilterConfig) bool {
-	return MatchesFilter(issue, filter) && !HasBlockingLifecycleLabel(issue.Labels)
+	return IsCandidateWithPrefix(issue, filter, "maestro")
+}
+
+func IsCandidateWithPrefix(issue domain.Issue, filter config.FilterConfig, prefix string) bool {
+	return MatchesFilterWithPrefix(issue, filter, prefix) && !HasBlockingLifecycleLabelWithPrefix(issue.Labels, prefix)
 }
 
 func IsTerminal(issue domain.Issue) bool {

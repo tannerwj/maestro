@@ -593,6 +593,98 @@ logging:
 	}
 }
 
+func TestLoadMergesAgentPackHarnessConfigPerKey(t *testing.T) {
+	t.Setenv("GITLAB_TOKEN", "secret-token")
+
+	root := t.TempDir()
+	packsDir := filepath.Join(root, "agent-packs", "repo-maintainer")
+	if err := os.MkdirAll(packsDir, 0o755); err != nil {
+		t.Fatalf("mkdir pack dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packsDir, "prompt.md"), []byte("Agent {{.Agent.Name}}"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packsDir, "agent.yaml"), []byte(`
+name: repo-maintainer
+harness: codex
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+codex:
+  model: gpt-5.4
+  reasoning: high
+  max_turns: 12
+  thread_sandbox: workspace-write
+  turn_sandbox_policy:
+    type: workspaceWrite
+  extra_args: ["--search"]
+`), 0o644); err != nil {
+		t.Fatalf("write pack: %v", err)
+	}
+
+	configPath := filepath.Join(root, "maestro.yaml")
+	raw := `
+agent_packs_dir: ./agent-packs
+defaults:
+  poll_interval: 5s
+  max_concurrent_global: 1
+user:
+  name: TJ
+  gitlab_username: tjohnson
+sources:
+  - name: platform-dev
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.example.com
+      token_env: GITLAB_TOKEN
+      project: team/project
+    filter:
+      labels: [agent:ready]
+    agent_type: repo-maintainer
+agent_types:
+  - name: repo-maintainer
+    agent_pack: repo-maintainer
+    codex:
+      reasoning: medium
+      extra_args: []
+workspace:
+  root: ./workspaces
+logging:
+  dir: ./logs
+`
+	if err := os.WriteFile(configPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	agent := cfg.AgentTypes[0]
+	if agent.Codex == nil {
+		t.Fatal("codex config = nil, want merged config")
+	}
+	if got, want := agent.Codex.Model, "gpt-5.4"; got != want {
+		t.Fatalf("model = %q, want %q", got, want)
+	}
+	if got, want := agent.Codex.Reasoning, "medium"; got != want {
+		t.Fatalf("reasoning = %q, want %q", got, want)
+	}
+	if got, want := agent.Codex.MaxTurns, 12; got != want {
+		t.Fatalf("max turns = %d, want %d", got, want)
+	}
+	if got, want := agent.Codex.ThreadSandbox, "workspace-write"; got != want {
+		t.Fatalf("thread sandbox = %q, want %q", got, want)
+	}
+	if got := agent.Codex.TurnSandboxPolicy["type"]; got != "workspaceWrite" {
+		t.Fatalf("turn sandbox policy type = %v, want workspaceWrite", got)
+	}
+	if agent.Codex.ExtraArgs == nil || len(agent.Codex.ExtraArgs) != 0 {
+		t.Fatalf("extra args = %v, want explicit empty override", agent.Codex.ExtraArgs)
+	}
+}
+
 func TestLoadDefersRepoPackResolution(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "maestro.yaml")
@@ -852,5 +944,75 @@ logging:
 	}
 	if got := agent.MaxConcurrent; got != 2 {
 		t.Fatalf("max concurrent = %d", got)
+	}
+}
+
+func TestResolveLifecycleTransitionsMergesDefaultsAndSourceOverrides(t *testing.T) {
+	dispatch := config.ResolveDispatchTransition(
+		&config.DispatchTransition{State: "In Progress"},
+		&config.DispatchTransition{},
+	)
+	if dispatch == nil || dispatch.State != "In Progress" {
+		t.Fatalf("dispatch transition = %+v, want inherited state", dispatch)
+	}
+
+	complete := config.ResolveLifecycleTransition(
+		&config.LifecycleTransition{
+			AddLabels:    []string{"maestro:review"},
+			RemoveLabels: []string{"maestro:coding"},
+			State:        "In Review",
+		},
+		&config.LifecycleTransition{
+			State: "Human Review",
+		},
+	)
+	if complete == nil {
+		t.Fatal("complete transition = nil, want merged transition")
+	}
+	if got, want := complete.State, "Human Review"; got != want {
+		t.Fatalf("complete state = %q, want %q", got, want)
+	}
+	if got, want := complete.AddLabels, []string{"maestro:review"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("complete add_labels = %v, want %v", got, want)
+	}
+	if got, want := complete.RemoveLabels, []string{"maestro:coding"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("complete remove_labels = %v, want %v", got, want)
+	}
+
+	failure := config.ResolveLifecycleTransition(
+		&config.LifecycleTransition{
+			AddLabels:    []string{"maestro:failed"},
+			RemoveLabels: []string{"maestro:coding"},
+		},
+		&config.LifecycleTransition{
+			AddLabels: []string{},
+		},
+	)
+	if failure == nil {
+		t.Fatal("failure transition = nil, want merged transition")
+	}
+	if failure.AddLabels == nil || len(failure.AddLabels) != 0 {
+		t.Fatalf("failure add_labels = %v, want explicit empty override", failure.AddLabels)
+	}
+	if got, want := failure.RemoveLabels, []string{"maestro:coding"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("failure remove_labels = %v, want %v", got, want)
+	}
+}
+
+func TestResolveHarnessConfigAllowsExplicitEmptyExtraArgsOverride(t *testing.T) {
+	codex := config.ResolveCodexConfig(
+		&config.CodexConfig{ExtraArgs: []string{"--search"}},
+		&config.CodexConfig{ExtraArgs: []string{}},
+	)
+	if codex.ExtraArgs == nil || len(codex.ExtraArgs) != 0 {
+		t.Fatalf("codex extra_args = %v, want explicit empty override", codex.ExtraArgs)
+	}
+
+	claude := config.ResolveClaudeConfig(
+		&config.ClaudeConfig{ExtraArgs: []string{"--verbose"}},
+		&config.ClaudeConfig{ExtraArgs: []string{}},
+	)
+	if claude.ExtraArgs == nil || len(claude.ExtraArgs) != 0 {
+		t.Fatalf("claude extra_args = %v, want explicit empty override", claude.ExtraArgs)
 	}
 }

@@ -36,6 +36,22 @@ func (d Duration) MarshalYAML() (any, error) {
 	return d.Duration.String(), nil
 }
 
+type CodexConfig struct {
+	Model             string         `yaml:"model"`
+	Reasoning         string         `yaml:"reasoning"`
+	MaxTurns          int            `yaml:"max_turns"`
+	ThreadSandbox     string         `yaml:"thread_sandbox"`
+	TurnSandboxPolicy map[string]any `yaml:"turn_sandbox_policy"`
+	ExtraArgs         []string       `yaml:"extra_args"`
+}
+
+type ClaudeConfig struct {
+	Model     string   `yaml:"model"`
+	Reasoning string   `yaml:"reasoning"`
+	MaxTurns  int      `yaml:"max_turns"`
+	ExtraArgs []string `yaml:"extra_args"`
+}
+
 type Config struct {
 	ConfigPath string `yaml:"-"`
 	ConfigDir  string `yaml:"-"`
@@ -44,6 +60,8 @@ type Config struct {
 	SourceDefaults SourceDefaultsConfig `yaml:"source_defaults"`
 	AgentDefaults  AgentDefaultsConfig  `yaml:"agent_defaults"`
 	Defaults       DefaultsConfig       `yaml:"defaults"`
+	CodexDefaults  *CodexConfig         `yaml:"codex_defaults"`
+	ClaudeDefaults *ClaudeConfig        `yaml:"claude_defaults"`
 	User           UserConfig           `yaml:"user"`
 	Sources        []SourceConfig       `yaml:"sources"`
 	AgentTypes     []AgentTypeConfig    `yaml:"agent_types"`
@@ -57,9 +75,23 @@ type Config struct {
 }
 
 type DefaultsConfig struct {
-	PollInterval        Duration `yaml:"poll_interval"`
-	MaxConcurrentGlobal int      `yaml:"max_concurrent_global"`
-	StallTimeout        Duration `yaml:"stall_timeout"`
+	PollInterval        Duration             `yaml:"poll_interval"`
+	MaxConcurrentGlobal int                  `yaml:"max_concurrent_global"`
+	StallTimeout        Duration             `yaml:"stall_timeout"`
+	LabelPrefix         string               `yaml:"label_prefix"`
+	OnDispatch          *DispatchTransition  `yaml:"on_dispatch"`
+	OnComplete          *LifecycleTransition `yaml:"on_complete"`
+	OnFailure           *LifecycleTransition `yaml:"on_failure"`
+}
+
+type LifecycleTransition struct {
+	AddLabels    []string `yaml:"add_labels"`
+	RemoveLabels []string `yaml:"remove_labels"`
+	State        string   `yaml:"state"`
+}
+
+type DispatchTransition struct {
+	State string `yaml:"state"`
 }
 
 type SourceDefaultsConfig struct {
@@ -105,20 +137,25 @@ type UserConfig struct {
 }
 
 type SourceConfig struct {
-	Name            string           `yaml:"name"`
-	DisplayGroup    string           `yaml:"display_group"`
-	Tags            []string         `yaml:"tags"`
-	Tracker         string           `yaml:"tracker"`
-	Connection      SourceConnection `yaml:"connection"`
-	Repo            string           `yaml:"repo"`
-	Filter          FilterConfig     `yaml:"filter"`
-	EpicFilter      FilterConfig     `yaml:"epic_filter"`
-	IssueFilter     FilterConfig     `yaml:"issue_filter"`
-	AgentType       string           `yaml:"agent_type"`
-	PollInterval    Duration         `yaml:"poll_interval"`
-	RetryBase       Duration         `yaml:"retry_base"`
-	MaxRetryBackoff Duration         `yaml:"max_retry_backoff"`
-	MaxAttempts     int              `yaml:"max_attempts"`
+	Name            string               `yaml:"name"`
+	DisplayGroup    string               `yaml:"display_group"`
+	Tags            []string             `yaml:"tags"`
+	Tracker         string               `yaml:"tracker"`
+	Connection      SourceConnection     `yaml:"connection"`
+	Repo            string               `yaml:"repo"`
+	Filter          FilterConfig         `yaml:"filter"`
+	EpicFilter      FilterConfig         `yaml:"epic_filter"`
+	IssueFilter     FilterConfig         `yaml:"issue_filter"`
+	AgentType       string               `yaml:"agent_type"`
+	PollInterval    Duration             `yaml:"poll_interval"`
+	RetryBase       Duration             `yaml:"retry_base"`
+	MaxRetryBackoff Duration             `yaml:"max_retry_backoff"`
+	MaxAttempts     int                  `yaml:"max_attempts"`
+	OnDispatch      *DispatchTransition  `yaml:"on_dispatch"`
+	OnComplete      *LifecycleTransition `yaml:"on_complete"`
+	OnFailure       *LifecycleTransition `yaml:"on_failure"`
+
+	LabelPrefix string `yaml:"-"`
 }
 
 type SourceConnection struct {
@@ -156,6 +193,9 @@ type AgentTypeConfig struct {
 	Tools           []string          `yaml:"tools"`
 	Skills          []string          `yaml:"skills"`
 	ContextFiles    []string          `yaml:"context_files"`
+
+	Codex  *CodexConfig  `yaml:"codex"`
+	Claude *ClaudeConfig `yaml:"claude"`
 
 	PackPath      string `yaml:"-"`
 	RepoPackPath  string `yaml:"-"`
@@ -293,6 +333,251 @@ func ScopedStateDir(cfg *Config, source SourceConfig) string {
 		return cfg.State.Dir
 	}
 	return filepath.Join(cfg.State.Dir, safeConfigKey(source.Name))
+}
+
+func cloneCodexConfig(src *CodexConfig) *CodexConfig {
+	if src == nil {
+		return nil
+	}
+	cloned := *src
+	if src.TurnSandboxPolicy != nil {
+		cloned.TurnSandboxPolicy = cloneStringAnyMap(src.TurnSandboxPolicy)
+	}
+	if src.ExtraArgs != nil {
+		cloned.ExtraArgs = append([]string{}, src.ExtraArgs...)
+	}
+	return &cloned
+}
+
+func cloneClaudeConfig(src *ClaudeConfig) *ClaudeConfig {
+	if src == nil {
+		return nil
+	}
+	cloned := *src
+	if src.ExtraArgs != nil {
+		cloned.ExtraArgs = append([]string{}, src.ExtraArgs...)
+	}
+	return &cloned
+}
+
+func mergeCodexConfig(base *CodexConfig, override *CodexConfig) *CodexConfig {
+	if base == nil && override == nil {
+		return nil
+	}
+	if base == nil {
+		return cloneCodexConfig(override)
+	}
+	merged := cloneCodexConfig(base)
+	if override == nil {
+		return merged
+	}
+	if override.Model != "" {
+		merged.Model = override.Model
+	}
+	if override.Reasoning != "" {
+		merged.Reasoning = override.Reasoning
+	}
+	if override.MaxTurns != 0 {
+		merged.MaxTurns = override.MaxTurns
+	}
+	if override.ThreadSandbox != "" {
+		merged.ThreadSandbox = override.ThreadSandbox
+	}
+	if override.TurnSandboxPolicy != nil {
+		merged.TurnSandboxPolicy = cloneStringAnyMap(override.TurnSandboxPolicy)
+	}
+	if override.ExtraArgs != nil {
+		merged.ExtraArgs = append([]string{}, override.ExtraArgs...)
+	}
+	return merged
+}
+
+func mergeClaudeConfig(base *ClaudeConfig, override *ClaudeConfig) *ClaudeConfig {
+	if base == nil && override == nil {
+		return nil
+	}
+	if base == nil {
+		return cloneClaudeConfig(override)
+	}
+	merged := cloneClaudeConfig(base)
+	if override == nil {
+		return merged
+	}
+	if override.Model != "" {
+		merged.Model = override.Model
+	}
+	if override.Reasoning != "" {
+		merged.Reasoning = override.Reasoning
+	}
+	if override.MaxTurns != 0 {
+		merged.MaxTurns = override.MaxTurns
+	}
+	if override.ExtraArgs != nil {
+		merged.ExtraArgs = append([]string{}, override.ExtraArgs...)
+	}
+	return merged
+}
+
+func cloneStringAnyMap(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(src))
+	for k, v := range src {
+		cloned[k] = v
+	}
+	return cloned
+}
+
+func cloneDispatchTransition(src *DispatchTransition) *DispatchTransition {
+	if src == nil {
+		return nil
+	}
+	cloned := *src
+	return &cloned
+}
+
+func cloneLifecycleTransition(src *LifecycleTransition) *LifecycleTransition {
+	if src == nil {
+		return nil
+	}
+	cloned := *src
+	if src.AddLabels != nil {
+		cloned.AddLabels = append([]string{}, src.AddLabels...)
+	}
+	if src.RemoveLabels != nil {
+		cloned.RemoveLabels = append([]string{}, src.RemoveLabels...)
+	}
+	return &cloned
+}
+
+func ResolveDispatchTransition(defaults *DispatchTransition, override *DispatchTransition) *DispatchTransition {
+	if defaults == nil && override == nil {
+		return nil
+	}
+	if defaults == nil {
+		return cloneDispatchTransition(override)
+	}
+	merged := cloneDispatchTransition(defaults)
+	if override == nil {
+		return merged
+	}
+	if override.State != "" {
+		merged.State = override.State
+	}
+	return merged
+}
+
+func ResolveLifecycleTransition(defaults *LifecycleTransition, override *LifecycleTransition) *LifecycleTransition {
+	if defaults == nil && override == nil {
+		return nil
+	}
+	if defaults == nil {
+		return cloneLifecycleTransition(override)
+	}
+	merged := cloneLifecycleTransition(defaults)
+	if override == nil {
+		return merged
+	}
+	if override.AddLabels != nil {
+		merged.AddLabels = append([]string{}, override.AddLabels...)
+	}
+	if override.RemoveLabels != nil {
+		merged.RemoveLabels = append([]string{}, override.RemoveLabels...)
+	}
+	if override.State != "" {
+		merged.State = override.State
+	}
+	return merged
+}
+
+// ResolveCodexConfig merges hardcoded defaults, top-level codex_defaults, and per-agent override.
+func ResolveCodexConfig(defaults *CodexConfig, override *CodexConfig) CodexConfig {
+	resolved := CodexConfig{
+		Model:         "gpt-5.4",
+		Reasoning:     "high",
+		MaxTurns:      20,
+		ThreadSandbox: "workspace-write",
+	}
+	if defaults != nil {
+		if defaults.Model != "" {
+			resolved.Model = defaults.Model
+		}
+		if defaults.Reasoning != "" {
+			resolved.Reasoning = defaults.Reasoning
+		}
+		if defaults.MaxTurns > 0 {
+			resolved.MaxTurns = defaults.MaxTurns
+		}
+		if defaults.ThreadSandbox != "" {
+			resolved.ThreadSandbox = defaults.ThreadSandbox
+		}
+		if defaults.TurnSandboxPolicy != nil {
+			resolved.TurnSandboxPolicy = cloneStringAnyMap(defaults.TurnSandboxPolicy)
+		}
+		if defaults.ExtraArgs != nil {
+			resolved.ExtraArgs = append([]string{}, defaults.ExtraArgs...)
+		}
+	}
+	if override != nil {
+		if override.Model != "" {
+			resolved.Model = override.Model
+		}
+		if override.Reasoning != "" {
+			resolved.Reasoning = override.Reasoning
+		}
+		if override.MaxTurns > 0 {
+			resolved.MaxTurns = override.MaxTurns
+		}
+		if override.ThreadSandbox != "" {
+			resolved.ThreadSandbox = override.ThreadSandbox
+		}
+		if override.TurnSandboxPolicy != nil {
+			resolved.TurnSandboxPolicy = cloneStringAnyMap(override.TurnSandboxPolicy)
+		}
+		if override.ExtraArgs != nil {
+			resolved.ExtraArgs = append([]string{}, override.ExtraArgs...)
+		}
+	}
+	return resolved
+}
+
+// ResolveClaudeConfig merges hardcoded defaults, top-level claude_defaults, and per-agent override.
+func ResolveClaudeConfig(defaults *ClaudeConfig, override *ClaudeConfig) ClaudeConfig {
+	resolved := ClaudeConfig{
+		Model:     "opus-4.6",
+		Reasoning: "high",
+		MaxTurns:  1,
+	}
+	if defaults != nil {
+		if defaults.Model != "" {
+			resolved.Model = defaults.Model
+		}
+		if defaults.Reasoning != "" {
+			resolved.Reasoning = defaults.Reasoning
+		}
+		if defaults.MaxTurns > 0 {
+			resolved.MaxTurns = defaults.MaxTurns
+		}
+		if defaults.ExtraArgs != nil {
+			resolved.ExtraArgs = append([]string{}, defaults.ExtraArgs...)
+		}
+	}
+	if override != nil {
+		if override.Model != "" {
+			resolved.Model = override.Model
+		}
+		if override.Reasoning != "" {
+			resolved.Reasoning = override.Reasoning
+		}
+		if override.MaxTurns > 0 {
+			resolved.MaxTurns = override.MaxTurns
+		}
+		if override.ExtraArgs != nil {
+			resolved.ExtraArgs = append([]string{}, override.ExtraArgs...)
+		}
+	}
+	return resolved
 }
 
 func safeConfigKey(raw string) string {

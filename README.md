@@ -24,6 +24,12 @@ The current build is a working POC. It is intentionally narrow in surface area, 
 - Multiple sources and agent mappings in one config
 - Source-level tracker defaults and agent defaults to reduce config repetition
 - Bounded parallel dispatch via `defaults.max_concurrent_global` and `agent_types[].max_concurrent`
+- Configurable harness model, reasoning, and extra args via `codex_defaults`/`claude_defaults` and per-agent overrides
+- Multi-turn Codex with configurable `max_turns` and continuation prompts with issue state refresh
+- Lifecycle transition pipelines via global defaults plus per-source `on_dispatch`/`on_complete`/`on_failure`
+- Configurable lifecycle label prefix (`defaults.label_prefix`)
+- Go template FuncMap helpers: `default`, `join`, `lower`, `upper`, `trim`, `contains`, `hasPrefix`, `indent`
+- `dev-codex` agent pack for full Symphony-style Codex workflow
 
 ## Current Limits
 
@@ -87,9 +93,15 @@ make smoke-many-sources
 
 Built-in agent packs:
 
+- Access reviewer: [agents/access-reviewer/agent.yaml](agents/access-reviewer/agent.yaml)
 - Code change: [agents/code-pr/agent.yaml](agents/code-pr/agent.yaml)
+- Demo app bootstrap: [agents/demo-app-bootstrap/agent.yaml](agents/demo-app-bootstrap/agent.yaml)
+- Dev Claude: [agents/dev-claude/agent.yaml](agents/dev-claude/agent.yaml)
+- Dev Codex: [agents/dev-codex/agent.yaml](agents/dev-codex/agent.yaml)
+- Query optimizer: [agents/query-optimizer/agent.yaml](agents/query-optimizer/agent.yaml)
 - Repo maintainer: [agents/repo-maintainer/agent.yaml](agents/repo-maintainer/agent.yaml)
 - Triage: [agents/triage/agent.yaml](agents/triage/agent.yaml)
+- Vulnerability triage: [agents/vuln-triage/agent.yaml](agents/vuln-triage/agent.yaml)
 
 ## Smoke Scripts
 
