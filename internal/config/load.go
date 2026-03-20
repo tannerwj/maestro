@@ -90,6 +90,9 @@ func applySystemDefaults(cfg *Config) {
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = "info"
 	}
+	if cfg.AgentDefaults.ApprovalTimeout.Duration == 0 {
+		cfg.AgentDefaults.ApprovalTimeout = Duration{Duration: 24 * time.Hour}
+	}
 	if cfg.AgentPacksDir == "" {
 		cfg.AgentPacksDir = filepath.Join(cfg.ConfigDir, "agents")
 	}
@@ -228,6 +231,9 @@ func mergeAgentDefaults(target *AgentTypeConfig, defaults AgentDefaultsConfig) {
 	}
 	if strings.TrimSpace(target.ApprovalPolicy) == "" {
 		target.ApprovalPolicy = defaults.ApprovalPolicy
+	}
+	if target.ApprovalTimeout.Duration == 0 {
+		target.ApprovalTimeout = defaults.ApprovalTimeout
 	}
 	if strings.TrimSpace(target.Communication) == "" {
 		target.Communication = defaults.Communication

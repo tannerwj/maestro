@@ -60,6 +60,12 @@ func (m *Manager) PrepareClone(ctx context.Context, issue domain.Issue, agentNam
 	if err := resetWorkspacePath(path); err != nil {
 		return Prepared{}, err
 	}
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			_ = os.RemoveAll(path)
+		}
+	}()
 
 	if err := cloneRepo(ctx, repoURL, m.gitLabHost, m.gitLabToken, path); err != nil {
 		return Prepared{}, err
@@ -70,6 +76,7 @@ func (m *Manager) PrepareClone(ctx context.Context, issue domain.Issue, agentNam
 		return Prepared{}, err
 	}
 
+	cleanupOnError = false
 	return Prepared{Path: path, Branch: branch}, nil
 }
 

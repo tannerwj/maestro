@@ -79,19 +79,20 @@ type SourceDefaultsEntry struct {
 }
 
 type AgentDefaultsConfig struct {
-	Description    string            `yaml:"description"`
-	InstanceName   string            `yaml:"instance_name"`
-	Harness        string            `yaml:"harness"`
-	Workspace      string            `yaml:"workspace"`
-	Prompt         string            `yaml:"prompt"`
-	ApprovalPolicy string            `yaml:"approval_policy"`
-	Communication  string            `yaml:"communication"`
-	MaxConcurrent  int               `yaml:"max_concurrent"`
-	StallTimeout   Duration          `yaml:"stall_timeout"`
-	Env            map[string]string `yaml:"env"`
-	Tools          []string          `yaml:"tools"`
-	Skills         []string          `yaml:"skills"`
-	ContextFiles   []string          `yaml:"context_files"`
+	Description     string            `yaml:"description"`
+	InstanceName    string            `yaml:"instance_name"`
+	Harness         string            `yaml:"harness"`
+	Workspace       string            `yaml:"workspace"`
+	Prompt          string            `yaml:"prompt"`
+	ApprovalPolicy  string            `yaml:"approval_policy"`
+	ApprovalTimeout Duration          `yaml:"approval_timeout"`
+	Communication   string            `yaml:"communication"`
+	MaxConcurrent   int               `yaml:"max_concurrent"`
+	StallTimeout    Duration          `yaml:"stall_timeout"`
+	Env             map[string]string `yaml:"env"`
+	Tools           []string          `yaml:"tools"`
+	Skills          []string          `yaml:"skills"`
+	ContextFiles    []string          `yaml:"context_files"`
 }
 
 type UserConfig struct {
@@ -133,21 +134,22 @@ type FilterConfig struct {
 }
 
 type AgentTypeConfig struct {
-	Name           string            `yaml:"name"`
-	AgentPack      string            `yaml:"agent_pack"`
-	Description    string            `yaml:"description"`
-	InstanceName   string            `yaml:"instance_name"`
-	Harness        string            `yaml:"harness"`
-	Workspace      string            `yaml:"workspace"`
-	Prompt         string            `yaml:"prompt"`
-	ApprovalPolicy string            `yaml:"approval_policy"`
-	Communication  string            `yaml:"communication"`
-	MaxConcurrent  int               `yaml:"max_concurrent"`
-	StallTimeout   Duration          `yaml:"stall_timeout"`
-	Env            map[string]string `yaml:"env"`
-	Tools          []string          `yaml:"tools"`
-	Skills         []string          `yaml:"skills"`
-	ContextFiles   []string          `yaml:"context_files"`
+	Name            string            `yaml:"name"`
+	AgentPack       string            `yaml:"agent_pack"`
+	Description     string            `yaml:"description"`
+	InstanceName    string            `yaml:"instance_name"`
+	Harness         string            `yaml:"harness"`
+	Workspace       string            `yaml:"workspace"`
+	Prompt          string            `yaml:"prompt"`
+	ApprovalPolicy  string            `yaml:"approval_policy"`
+	ApprovalTimeout Duration          `yaml:"approval_timeout"`
+	Communication   string            `yaml:"communication"`
+	MaxConcurrent   int               `yaml:"max_concurrent"`
+	StallTimeout    Duration          `yaml:"stall_timeout"`
+	Env             map[string]string `yaml:"env"`
+	Tools           []string          `yaml:"tools"`
+	Skills          []string          `yaml:"skills"`
+	ContextFiles    []string          `yaml:"context_files"`
 
 	PackPath      string `yaml:"-"`
 	RepoPackPath  string `yaml:"-"`

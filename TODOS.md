@@ -101,7 +101,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Add approval timeout
+### [Done] Add approval timeout
 
 **What:** Configurable timeout for pending approval requests. Default 24h. Run fails if approval not resolved within timeout.
 
@@ -116,7 +116,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Extract duplicated mergeEnv to harness/env.go
+### [Done] Extract duplicated mergeEnv to harness/env.go
 
 **What:** `mergeEnv()` is identical in `claude/adapter.go:402` and `codex/adapter.go:796`. Extract to `internal/harness/env.go`.
 
@@ -126,7 +126,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Use permissive default for approved tool permissions (Claude adapter)
+### [Done] Use permissive default for approved tool permissions (Claude adapter)
 
 **What:** Replace hardcoded tool name switch in `claude/adapter.go:367` (`approvedPermissionMode()`) with a permissive default for any approved tool.
 
@@ -136,7 +136,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Add template parse validation in config
+### [Done] Add template parse validation in config
 
 **What:** After checking that the prompt file exists (validate.go:73), parse it as a Go template to catch syntax errors at config load time.
 
@@ -150,7 +150,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Add HTTP client timeouts to tracker adapters
+### [Done] Add HTTP client timeouts to tracker adapters
 
 **What:** Set `Timeout: 30 * time.Second` on HTTP clients in `gitlab/client.go:28` and `linear/client.go:30`. Add `context.WithTimeout` around `Poll()` calls in `loop.go:43`.
 
@@ -160,7 +160,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Add workspace failure + workspace:none tests
+### [Done] Add workspace failure + workspace:none tests
 
 **What:** Test git clone failures (bad URL, auth failure, branch conflict), cleanup after partial failure, and the new workspace:none temp dir lifecycle.
 
@@ -170,7 +170,7 @@ Phase 2 (post-clone):   repo/.maestro/ → prompt.md, context/, claude/, codex/
 
 ---
 
-### [P1] Add failing-tracker test for lifecycle sync errors
+### [Done] Add failing-tracker test for lifecycle sync errors
 
 **What:** Create a tracker stub that fails on specific label/comment operations. Verify the orchestrator doesn't corrupt run state when lifecycle writes fail.
 

@@ -8,6 +8,8 @@ import (
 	trackerbase "github.com/tjohnson/maestro/internal/tracker"
 )
 
+var pollRequestTimeout = 30 * time.Second
+
 func (s *Service) Run(ctx context.Context) error {
 	s.startApprovalWatcher(ctx)
 	s.startMessageWatcher(ctx)
@@ -40,7 +42,10 @@ func (s *Service) Run(ctx context.Context) error {
 func (s *Service) tick(ctx context.Context) error {
 	s.reconcileStalledRun(ctx)
 
-	issues, err := s.tracker.Poll(ctx)
+	pollCtx, cancel := context.WithTimeout(ctx, pollRequestTimeout)
+	defer cancel()
+
+	issues, err := s.tracker.Poll(pollCtx)
 	if err != nil {
 		return err
 	}

@@ -268,6 +268,122 @@ logging:
 	}
 }
 
+func TestLoadAppliesDefaultApprovalTimeout(t *testing.T) {
+	t.Setenv("GITLAB_TOKEN", "secret-token")
+
+	root := t.TempDir()
+	promptDir := filepath.Join(root, "agents", "code-pr")
+	if err := os.MkdirAll(promptDir, 0o755); err != nil {
+		t.Fatalf("mkdir prompt dir: %v", err)
+	}
+	promptPath := filepath.Join(promptDir, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("Issue {{.Issue.Identifier}}"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	configPath := filepath.Join(root, "maestro.yaml")
+	raw := `
+defaults:
+  poll_interval: 5s
+  max_concurrent_global: 1
+user:
+  name: TJ
+  gitlab_username: tj
+sources:
+  - name: platform-dev
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.example.com
+      token_env: GITLAB_TOKEN
+      project: team/project
+    filter:
+      labels: [agent:ready]
+    agent_type: code-pr
+agent_types:
+  - name: code-pr
+    harness: claude-code
+    workspace: git-clone
+    prompt: agents/code-pr/prompt.md
+    approval_policy: manual
+    max_concurrent: 1
+workspace:
+  root: ./workspaces
+logging:
+  dir: ./logs
+`
+	if err := os.WriteFile(configPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if got, want := cfg.AgentTypes[0].ApprovalTimeout.Duration, 24*time.Hour; got != want {
+		t.Fatalf("approval timeout = %s, want %s", got, want)
+	}
+}
+
+func TestLoadAppliesAgentDefaultApprovalTimeout(t *testing.T) {
+	t.Setenv("GITLAB_TOKEN", "secret-token")
+
+	root := t.TempDir()
+	promptDir := filepath.Join(root, "agents", "code-pr")
+	if err := os.MkdirAll(promptDir, 0o755); err != nil {
+		t.Fatalf("mkdir prompt dir: %v", err)
+	}
+	promptPath := filepath.Join(promptDir, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("Issue {{.Issue.Identifier}}"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	configPath := filepath.Join(root, "maestro.yaml")
+	raw := `
+defaults:
+  poll_interval: 5s
+  max_concurrent_global: 1
+agent_defaults:
+  approval_timeout: 2h
+user:
+  name: TJ
+  gitlab_username: tj
+sources:
+  - name: platform-dev
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.example.com
+      token_env: GITLAB_TOKEN
+      project: team/project
+    filter:
+      labels: [agent:ready]
+    agent_type: code-pr
+agent_types:
+  - name: code-pr
+    harness: claude-code
+    workspace: git-clone
+    prompt: agents/code-pr/prompt.md
+    approval_policy: manual
+    max_concurrent: 1
+workspace:
+  root: ./workspaces
+logging:
+  dir: ./logs
+`
+	if err := os.WriteFile(configPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if got, want := cfg.AgentTypes[0].ApprovalTimeout.Duration, 2*time.Hour; got != want {
+		t.Fatalf("approval timeout = %s, want %s", got, want)
+	}
+}
+
 func TestLoadMergesAgentPackDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("GITLAB_TOKEN", "secret-token")
 

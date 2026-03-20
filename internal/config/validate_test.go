@@ -42,13 +42,14 @@ func TestValidateMVPRejectsZeroGlobalConcurrency(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "code-pr",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "code-pr",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -93,13 +94,14 @@ func TestValidateMVPAcceptsLinearCodexSource(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "repo-maintainer",
-				Harness:        "codex",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "repo-maintainer",
+				Harness:         "codex",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -139,13 +141,14 @@ func TestValidateMVPAcceptsWorkspaceNoneWithoutRepo(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "codex",
-				Workspace:      "none",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "codex",
+				Workspace:       "none",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -182,13 +185,14 @@ func TestValidateMVPAcceptsRepoPackWithoutPromptFile(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "code-pr",
-				AgentPack:      "repo:.maestro",
-				Harness:        "codex",
-				Workspace:      "git-clone",
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "code-pr",
+				AgentPack:       "repo:.maestro",
+				Harness:         "codex",
+				Workspace:       "git-clone",
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -224,13 +228,14 @@ func TestValidateMVPRejectsRepoPackWithoutGitCloneWorkspace(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "ops",
-				AgentPack:      "repo:.maestro",
-				Harness:        "codex",
-				Workspace:      "none",
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "ops",
+				AgentPack:       "repo:.maestro",
+				Harness:         "codex",
+				Workspace:       "none",
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -272,19 +277,69 @@ func TestValidateMVPAcceptsClaudeManualApproval(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "manual",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "manual",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
 
 	if err := config.ValidateMVP(cfg); err != nil {
 		t.Fatalf("expected claude manual config to validate: %v", err)
+	}
+}
+
+func TestValidateMVPRejectsZeroApprovalTimeout(t *testing.T) {
+	root := t.TempDir()
+	promptPath := filepath.Join(root, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	cfg := &config.Config{
+		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
+		State: config.StateConfig{
+			Dir:             filepath.Join(root, "state"),
+			RetryBase:       config.Duration{Duration: time.Second},
+			MaxRetryBackoff: config.Duration{Duration: time.Minute},
+			MaxAttempts:     3,
+		},
+		Sources: []config.SourceConfig{
+			{
+				Name:      "platform-dev",
+				Tracker:   "gitlab",
+				AgentType: "triage",
+				Connection: config.GitLabConnection{
+					BaseURL: "https://gitlab.example.com",
+					Project: "team/project",
+					Token:   "token",
+				},
+				Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
+			},
+		},
+		AgentTypes: []config.AgentTypeConfig{
+			{
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "manual",
+				ApprovalTimeout: config.Duration{},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
+			},
+		},
+	}
+
+	err := config.ValidateMVP(cfg)
+	if err == nil || !strings.Contains(err.Error(), "approval_timeout") {
+		t.Fatalf("validation error = %v, want approval_timeout error", err)
 	}
 }
 
@@ -320,13 +375,14 @@ func TestValidateMVPAcceptsGitLabEpicSource(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -364,14 +420,15 @@ func TestValidateMVPAcceptsSlackCommunicationChannel(t *testing.T) {
 			Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
 		}},
 		AgentTypes: []config.AgentTypeConfig{{
-			Name:           "code-pr",
-			Harness:        "claude-code",
-			Workspace:      "git-clone",
-			Prompt:         promptPath,
-			ApprovalPolicy: "manual",
-			Communication:  "slack-dm",
-			MaxConcurrent:  1,
-			StallTimeout:   config.Duration{Duration: time.Minute},
+			Name:            "code-pr",
+			Harness:         "claude-code",
+			Workspace:       "git-clone",
+			Prompt:          promptPath,
+			ApprovalPolicy:  "manual",
+			ApprovalTimeout: config.Duration{Duration: time.Hour},
+			Communication:   "slack-dm",
+			MaxConcurrent:   1,
+			StallTimeout:    config.Duration{Duration: time.Minute},
 		}},
 		Channels: []config.ChannelConfig{{
 			Name: "slack-dm",
@@ -416,14 +473,15 @@ func TestValidateMVPRejectsUnknownCommunicationChannel(t *testing.T) {
 			Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
 		}},
 		AgentTypes: []config.AgentTypeConfig{{
-			Name:           "code-pr",
-			Harness:        "claude-code",
-			Workspace:      "git-clone",
-			Prompt:         promptPath,
-			ApprovalPolicy: "manual",
-			Communication:  "missing-channel",
-			MaxConcurrent:  1,
-			StallTimeout:   config.Duration{Duration: time.Minute},
+			Name:            "code-pr",
+			Harness:         "claude-code",
+			Workspace:       "git-clone",
+			Prompt:          promptPath,
+			ApprovalPolicy:  "manual",
+			ApprovalTimeout: config.Duration{Duration: time.Hour},
+			Communication:   "missing-channel",
+			MaxConcurrent:   1,
+			StallTimeout:    config.Duration{Duration: time.Minute},
 		}},
 	}
 
@@ -472,13 +530,14 @@ func TestValidateMVPRejectsInvalidEnabledServerConfig(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "code-pr",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "code-pr",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -520,13 +579,14 @@ func TestValidateMVPRejectsCredentialBearingRepoURL(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -536,6 +596,58 @@ func TestValidateMVPRejectsCredentialBearingRepoURL(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 	if !strings.Contains(err.Error(), "must not embed credentials") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidateMVPRejectsMalformedPromptTemplate(t *testing.T) {
+	root := t.TempDir()
+	promptPath := filepath.Join(root, "prompt.md")
+	if err := os.WriteFile(promptPath, []byte("hello {{.Issue.Identifier"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	cfg := &config.Config{
+		Defaults: config.DefaultsConfig{MaxConcurrentGlobal: 1, StallTimeout: config.Duration{Duration: time.Minute}},
+		Hooks:    config.HooksConfig{Timeout: config.Duration{Duration: 30 * time.Second}},
+		State: config.StateConfig{
+			Dir:             filepath.Join(root, "state"),
+			RetryBase:       config.Duration{Duration: time.Second},
+			MaxRetryBackoff: config.Duration{Duration: time.Minute},
+			MaxAttempts:     3,
+		},
+		Sources: []config.SourceConfig{
+			{
+				Name:      "platform-dev",
+				Tracker:   "gitlab",
+				AgentType: "triage",
+				Connection: config.SourceConnection{
+					BaseURL: "https://gitlab.example.com",
+					Project: "team/project",
+					Token:   "token",
+				},
+				Filter: config.FilterConfig{Labels: []string{"agent:ready"}},
+			},
+		},
+		AgentTypes: []config.AgentTypeConfig{
+			{
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
+			},
+		},
+	}
+
+	err := config.ValidateMVP(cfg)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "parse prompt template") {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
@@ -585,22 +697,24 @@ func TestValidateMVPAcceptsMultipleSourcesAndAgents(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "code-pr",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         firstPrompt,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "code-pr",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          firstPrompt,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 			{
-				Name:           "triage",
-				Harness:        "codex",
-				Workspace:      "git-clone",
-				Prompt:         secondPrompt,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "codex",
+				Workspace:       "git-clone",
+				Prompt:          secondPrompt,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -645,13 +759,14 @@ func TestValidateMVPRejectsGitLabEpicAssigneeOnEpicFilter(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}
@@ -700,13 +815,14 @@ func TestValidateMVPAcceptsGitLabEpicIIDFilter(t *testing.T) {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "triage",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "triage",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 	}

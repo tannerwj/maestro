@@ -28,6 +28,28 @@ func (s *Service) startApprovalWatcher(ctx context.Context) {
 			}
 		}
 	}()
+
+	go func() {
+		ticker := time.NewTicker(approvalTimeoutPollInterval(s.agent.ApprovalTimeout.Duration))
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				expired := s.expireTimedOutApprovals(time.Now())
+				if len(expired) == 0 {
+					continue
+				}
+				for _, approval := range expired {
+					s.recordRunEventByFields("warn", s.source.Name, approval.RunID, approval.IssueIdentifier, "approval timed out for %s (%s)", approval.RunID, approval.ToolName)
+					s.stopRunForTimedOutApproval(approval)
+				}
+				_ = s.saveStateBestEffort()
+			}
+		}
+	}()
 }
 
 func (s *Service) recordApprovalRequest(request harness.ApprovalRequest) {
@@ -110,6 +132,91 @@ func (s *Service) ResolveApproval(requestID string, decision string) error {
 	s.recordRunEventByFields("info", s.source.Name, request.RunID, request.IssueIdentifier, "approval %s for %s (%s)", decision, request.RunID, request.ToolName)
 	_ = s.saveStateBestEffort()
 	return nil
+}
+
+func (s *Service) expireTimedOutApprovals(now time.Time) []ApprovalView {
+	timeout := s.agent.ApprovalTimeout.Duration
+	if timeout <= 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.approvalOrder) == 0 {
+		return nil
+	}
+
+	expired := make([]ApprovalView, 0, len(s.approvalOrder))
+	kept := make([]string, 0, len(s.approvalOrder))
+	for _, requestID := range s.approvalOrder {
+		approval, ok := s.approvals[requestID]
+		if !ok {
+			continue
+		}
+		if approval.RequestedAt.IsZero() || now.Before(approval.RequestedAt.Add(timeout)) {
+			kept = append(kept, requestID)
+			continue
+		}
+
+		expired = append(expired, approval)
+		s.appendApprovalHistory(ApprovalHistoryEntry{
+			RequestID:       approval.RequestID,
+			RunID:           approval.RunID,
+			IssueID:         approval.IssueID,
+			IssueIdentifier: approval.IssueIdentifier,
+			AgentName:       approval.AgentName,
+			ToolName:        approval.ToolName,
+			ApprovalPolicy:  approval.ApprovalPolicy,
+			Decision:        "reject",
+			Reason:          "approval timeout",
+			RequestedAt:     approval.RequestedAt,
+			DecidedAt:       now,
+			Outcome:         "timed_out",
+		})
+		if s.activeRun != nil && s.activeRun.ID == approval.RunID {
+			s.activeRun.ApprovalState = domain.ApprovalStateRejected
+			s.activeRun.LastActivityAt = now
+		}
+		delete(s.approvals, requestID)
+	}
+	s.approvalOrder = kept
+	return expired
+}
+
+func approvalTimeoutPollInterval(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return time.Second
+	}
+
+	interval := timeout / 4
+	if interval < 50*time.Millisecond {
+		return 50 * time.Millisecond
+	}
+	if interval > time.Second {
+		return time.Second
+	}
+	return interval
+}
+
+func (s *Service) stopRunForTimedOutApproval(approval ApprovalView) {
+	s.mu.RLock()
+	active := s.activeRun != nil && s.activeRun.ID == approval.RunID
+	s.mu.RUnlock()
+	if !active {
+		return
+	}
+
+	if err := s.StopRun(approval.RunID, approvalTimeoutFailureReason(approval)); err != nil {
+		s.recordRunEventByFields("error", s.source.Name, approval.RunID, approval.IssueIdentifier, "stop run %s after approval timeout failed: %v", approval.RunID, err)
+	}
+}
+
+func approvalTimeoutFailureReason(approval ApprovalView) string {
+	if approval.ToolName == "" {
+		return "approval timeout"
+	}
+	return fmt.Sprintf("approval timeout while waiting on %s", approval.ToolName)
 }
 
 func removeApprovalID(order []string, requestID string) []string {

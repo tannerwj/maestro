@@ -29,15 +29,23 @@ func SystemPreamble() string {
 	return strings.TrimSpace(systemPreamble)
 }
 
-func RenderFile(path string, data Data) (string, error) {
+func ParseFile(path string) (*template.Template, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	tpl, err := template.New(path).Option("missingkey=error").Parse(string(raw))
 	if err != nil {
-		return "", fmt.Errorf("parse prompt template: %w", err)
+		return nil, fmt.Errorf("parse prompt template: %w", err)
+	}
+	return tpl, nil
+}
+
+func RenderFile(path string, data Data) (string, error) {
+	tpl, err := ParseFile(path)
+	if err != nil {
+		return "", err
 	}
 
 	var buf bytes.Buffer

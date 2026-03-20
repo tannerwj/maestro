@@ -13,6 +13,7 @@ func (s *Service) restoreState() error {
 	if err != nil {
 		return err
 	}
+	now := time.Now()
 
 	s.mu.Lock()
 	s.finished = snapshot.Finished
@@ -92,11 +93,31 @@ func (s *Service) restoreState() error {
 	}
 	s.mu.Unlock()
 
+	expiredApprovals := s.expireTimedOutApprovals(now)
+
 	if snapshot.ActiveRun == nil {
-		if s.expirePendingApprovals("restart without active run") || s.expirePendingMessages("restart without active run") {
+		if len(expiredApprovals) > 0 || s.expirePendingApprovals("restart without active run") || s.expirePendingMessages("restart without active run") {
 			return s.saveStateBestEffort()
 		}
 		return nil
+	}
+
+	if hasTimedOutApprovalForRun(expiredApprovals, snapshot.ActiveRun.RunID) {
+		s.mu.Lock()
+		s.finished[snapshot.ActiveRun.IssueID] = state.TerminalIssue{
+			IssueID:        snapshot.ActiveRun.IssueID,
+			Identifier:     snapshot.ActiveRun.Identifier,
+			Status:         domain.RunStatusFailed,
+			Attempt:        snapshot.ActiveRun.Attempt,
+			IssueUpdatedAt: snapshot.ActiveRun.IssueUpdatedAt,
+			FinishedAt:     now,
+			Error:          "approval timeout",
+		}
+		s.mu.Unlock()
+		_ = s.expirePendingApprovals("restart after approval timeout")
+		_ = s.expirePendingMessages("restart after approval timeout")
+		s.recordEvent("warn", "recovered active run %s after approval timeout", snapshot.ActiveRun.RunID)
+		return s.saveStateBestEffort()
 	}
 
 	nextAttempt := snapshot.ActiveRun.Attempt + 1
@@ -133,6 +154,15 @@ func (s *Service) restoreState() error {
 	_ = s.expirePendingMessages("restart after interrupted run")
 	s.recordEvent("warn", "recovered active run %s as retry attempt %d", snapshot.ActiveRun.RunID, nextAttempt)
 	return s.saveStateBestEffort()
+}
+
+func hasTimedOutApprovalForRun(expired []ApprovalView, runID string) bool {
+	for _, approval := range expired {
+		if approval.RunID == runID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) saveStateBestEffort() error {

@@ -38,6 +38,7 @@ harness: claude-code
 workspace: git-clone
 prompt: prompt.md
 approval_policy: manual
+approval_timeout: 24h
 max_concurrent: 1
 tools:
   - formatters
@@ -128,6 +129,7 @@ Config values win over pack defaults for:
 - `workspace`
 - `prompt`
 - `approval_policy`
+- `approval_timeout`
 - `max_concurrent`
 - `stall_timeout`
 - `env`
@@ -150,6 +152,7 @@ That means these fields must stay in `maestro.yaml` for repo packs:
 - `harness`
 - `workspace`
 - `approval_policy`
+- `approval_timeout`
 - `max_concurrent`
 
 ## Prompt Template Data
@@ -171,6 +174,16 @@ Useful `.Agent` fields now include:
 - `.Agent.Skills`
 - `.Agent.Context`
 - `.Agent.ApprovalPolicy`
+- `.Agent.ApprovalTimeout`
+
+## Approval Timeout
+
+`approval_timeout` is configurable per agent type and defaults to `24h`.
+
+- when an approval request stays unresolved past `requested_at + approval_timeout`, Maestro marks it as timed out
+- the timed-out approval is recorded in approval history with outcome `timed_out`
+- the active run is stopped and finishes as failed instead of waiting indefinitely
+- on restart, Maestro applies the same timeout check to persisted pending approvals before deciding whether to retry a recovered run
 
 ## Tools And Skills
 

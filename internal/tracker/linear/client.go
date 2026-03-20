@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const defaultGraphQLEndpoint = "https://api.linear.app/graphql"
+const defaultHTTPClientTimeout = 30 * time.Second
 
 type Client struct {
 	endpoint   string
@@ -27,7 +29,7 @@ func NewClient(baseURL string, token string) (*Client, error) {
 	return &Client{
 		endpoint:   endpoint,
 		token:      token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: defaultHTTPClientTimeout},
 	}, nil
 }
 

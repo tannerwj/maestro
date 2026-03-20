@@ -864,6 +864,71 @@ func TestServiceKeepsApprovalPendingWhenApprovalFails(t *testing.T) {
 	}
 }
 
+func TestServiceTimesOutPendingApprovalAndFailsRun(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.AgentTypes[0].ApprovalPolicy = "manual"
+	cfg.AgentTypes[0].ApprovalTimeout = config.Duration{Duration: 80 * time.Millisecond}
+	repoURL := createGitRepo(t)
+
+	fakeTracker := &testutil.FakeTracker{
+		Issues: singleIssue(cfg, repoURL, "gitlab:team/project#57", "team/project#57"),
+	}
+	fakeHarness := &testutil.FakeHarness{
+		WaitBlock:  make(chan struct{}),
+		ApprovalCh: make(chan harness.ApprovalRequest, 1),
+	}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   fakeTracker,
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun != nil
+	})
+
+	runID := svc.Snapshot().ActiveRun.ID
+	fakeHarness.ApprovalCh <- harness.ApprovalRequest{
+		RequestID:      "req-timeout",
+		RunID:          runID,
+		ToolName:       "shell",
+		ToolInput:      "rm -rf /tmp/demo",
+		ApprovalPolicy: "manual",
+		RequestedAt:    time.Now().Add(-time.Second),
+	}
+
+	waitFor(t, 2*time.Second, func() bool {
+		snapshot := svc.Snapshot()
+		return len(fakeHarness.StopCalls) == 1 && snapshot.ActiveRun == nil && len(snapshot.PendingApprovals) == 0 && len(snapshot.ApprovalHistory) == 1
+	})
+
+	snapshot := svc.Snapshot()
+	if got := snapshot.ApprovalHistory[0].Outcome; got != "timed_out" {
+		t.Fatalf("approval outcome = %q, want timed_out", got)
+	}
+	if got := snapshot.ApprovalHistory[0].Reason; got != "approval timeout" {
+		t.Fatalf("approval reason = %q, want approval timeout", got)
+	}
+	if len(fakeHarness.StopCalls) != 1 || fakeHarness.StopCalls[0] != runID {
+		t.Fatalf("stop calls = %+v, want [%s]", fakeHarness.StopCalls, runID)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
 func TestServiceTracksAndResolvesMessageRequests(t *testing.T) {
 	cfg := testConfig(t)
 	repoURL := createGitRepo(t)
@@ -986,6 +1051,86 @@ func TestServiceRestoresApprovalHistoryAsStaleAfterRestart(t *testing.T) {
 	}
 }
 
+func TestServiceFailsRecoveredRunWhenApprovalAlreadyTimedOut(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfigWithRoot(t, root)
+	cfg.AgentTypes[0].ApprovalTimeout = config.Duration{Duration: time.Second}
+	now := time.Now().UTC().Round(time.Second)
+	store := state.NewStore(cfg.State.Dir)
+	if err := store.Save(state.Snapshot{
+		RetryQueue: map[string]state.RetryEntry{},
+		Finished:   map[string]state.TerminalIssue{},
+		ActiveRun: &state.PersistedRun{
+			RunID:          "run-timeout",
+			IssueID:        "gitlab:team/project#88",
+			Identifier:     "team/project#88",
+			Status:         domain.RunStatusAwaiting,
+			Attempt:        1,
+			StartedAt:      now.Add(-2 * time.Hour),
+			LastActivityAt: now.Add(-2 * time.Hour),
+			IssueUpdatedAt: now.Add(-2 * time.Hour),
+		},
+		PendingApprovals: []state.PersistedApprovalRequest{
+			{
+				RequestID:       "req-timeout",
+				RunID:           "run-timeout",
+				IssueID:         "gitlab:team/project#88",
+				IssueIdentifier: "team/project#88",
+				AgentName:       "coder",
+				ToolName:        "shell",
+				ToolInput:       "dangerous command",
+				ApprovalPolicy:  "manual",
+				RequestedAt:     now.Add(-2 * time.Minute),
+				Resolvable:      true,
+			},
+		},
+	}); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:    &testutil.FakeTracker{},
+		Harness:    &testutil.FakeHarness{},
+		Workspace:  workspace.NewManager(cfg.Workspace.Root),
+		StateStore: store,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	snapshot := svc.Snapshot()
+	if snapshot.ActiveRun != nil {
+		t.Fatalf("active run = %+v, want nil", snapshot.ActiveRun)
+	}
+	if len(snapshot.Retries) != 0 {
+		t.Fatalf("retries = %d, want 0", len(snapshot.Retries))
+	}
+	if len(snapshot.PendingApprovals) != 0 {
+		t.Fatalf("pending approvals = %d, want 0", len(snapshot.PendingApprovals))
+	}
+	if len(snapshot.ApprovalHistory) != 1 {
+		t.Fatalf("approval history = %d, want 1", len(snapshot.ApprovalHistory))
+	}
+	if got := snapshot.ApprovalHistory[0].Outcome; got != "timed_out" {
+		t.Fatalf("approval outcome = %q, want timed_out", got)
+	}
+
+	persisted, err := store.Load()
+	if err != nil {
+		t.Fatalf("load persisted state: %v", err)
+	}
+	finished, ok := persisted.Finished["gitlab:team/project#88"]
+	if !ok {
+		t.Fatal("expected finished issue after approval timeout recovery")
+	}
+	if finished.Status != domain.RunStatusFailed {
+		t.Fatalf("finished status = %s, want %s", finished.Status, domain.RunStatusFailed)
+	}
+	if !strings.Contains(finished.Error, "approval timeout") {
+		t.Fatalf("finished error = %q, want approval timeout", finished.Error)
+	}
+}
+
 func TestServiceStopsRunWhenTrackerMarksIssueDone(t *testing.T) {
 	cfg := testConfig(t)
 	repoURL := createGitRepo(t)
@@ -1028,6 +1173,136 @@ func TestServiceStopsRunWhenTrackerMarksIssueDone(t *testing.T) {
 	}
 	if stored.Finished["gitlab:team/project#58"].Status != domain.RunStatusDone {
 		t.Fatalf("finished status = %q", stored.Finished["gitlab:team/project#58"].Status)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
+func TestServiceCompletesRunWhenLifecycleSyncFails(t *testing.T) {
+	cfg := testConfig(t)
+	repoURL := createGitRepo(t)
+
+	tracker := &failingLifecycleTracker{
+		FakeTracker: &testutil.FakeTracker{
+			Issues: singleIssue(cfg, repoURL, "gitlab:team/project#59", "team/project#59"),
+		},
+		addErr:     errors.New("add label failed"),
+		removeErr:  errors.New("remove label failed"),
+		commentErr: errors.New("comment failed"),
+	}
+	fakeHarness := &testutil.FakeHarness{}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   tracker,
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		snapshot := svc.Snapshot()
+		return len(fakeHarness.StartedRuns) == 1 && snapshot.ActiveRun == nil
+	})
+
+	snapshot := svc.Snapshot()
+	if snapshot.ClaimedCount != 0 {
+		t.Fatalf("claimed count = %d, want 0", snapshot.ClaimedCount)
+	}
+
+	stored, err := state.NewStore(cfg.State.Dir).Load()
+	if err != nil {
+		t.Fatalf("load persisted state: %v", err)
+	}
+	finished, ok := stored.Finished["gitlab:team/project#59"]
+	if !ok {
+		t.Fatal("expected finished issue despite lifecycle sync failures")
+	}
+	if finished.Status != domain.RunStatusDone {
+		t.Fatalf("finished status = %q, want %q", finished.Status, domain.RunStatusDone)
+	}
+	if len(stored.RetryQueue) != 0 {
+		t.Fatalf("retry queue = %+v, want empty", stored.RetryQueue)
+	}
+
+	cancel()
+	if err := <-errCh; err != nil {
+		t.Fatalf("run service: %v", err)
+	}
+}
+
+func TestServiceSchedulesRetryWhenLifecycleSyncFails(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.State.RetryBase = config.Duration{Duration: time.Hour}
+	cfg.State.MaxRetryBackoff = config.Duration{Duration: time.Hour}
+	repoURL := createGitRepo(t)
+
+	tracker := &failingLifecycleTracker{
+		FakeTracker: &testutil.FakeTracker{
+			Issues: singleIssue(cfg, repoURL, "gitlab:team/project#60", "team/project#60"),
+		},
+		addErr:     errors.New("add label failed"),
+		removeErr:  errors.New("remove label failed"),
+		commentErr: errors.New("comment failed"),
+	}
+	fakeHarness := &testutil.FakeHarness{
+		WaitErr: errors.New("boom"),
+	}
+
+	svc, err := orchestrator.NewServiceWithDeps(cfg, testLogger(), orchestrator.Dependencies{
+		Tracker:   tracker,
+		Harness:   fakeHarness,
+		Workspace: workspace.NewManager(cfg.Workspace.Root),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- svc.Run(ctx)
+	}()
+
+	waitFor(t, 2*time.Second, func() bool {
+		snapshot := svc.Snapshot()
+		return len(fakeHarness.StartedRuns) == 1 && snapshot.ActiveRun == nil && snapshot.RetryCount == 1
+	})
+
+	snapshot := svc.Snapshot()
+	if snapshot.ClaimedCount != 0 {
+		t.Fatalf("claimed count = %d, want 0", snapshot.ClaimedCount)
+	}
+	if len(snapshot.Retries) != 1 {
+		t.Fatalf("retries = %+v, want 1 entry", snapshot.Retries)
+	}
+	if snapshot.Retries[0].Attempt != 1 {
+		t.Fatalf("retry attempt = %d, want 1", snapshot.Retries[0].Attempt)
+	}
+
+	stored, err := state.NewStore(cfg.State.Dir).Load()
+	if err != nil {
+		t.Fatalf("load persisted state: %v", err)
+	}
+	retry, ok := stored.RetryQueue["gitlab:team/project#60"]
+	if !ok {
+		t.Fatal("expected persisted retry entry despite lifecycle sync failures")
+	}
+	if retry.Attempt != 1 {
+		t.Fatalf("retry attempt = %d, want 1", retry.Attempt)
+	}
+	if len(stored.Finished) != 0 {
+		t.Fatalf("finished = %+v, want empty", stored.Finished)
 	}
 
 	cancel()
@@ -1162,14 +1437,15 @@ func testConfigWithRoot(t *testing.T, root string) *config.Config {
 		},
 		AgentTypes: []config.AgentTypeConfig{
 			{
-				Name:           "code-pr",
-				InstanceName:   "coder",
-				Harness:        "claude-code",
-				Workspace:      "git-clone",
-				Prompt:         promptPath,
-				ApprovalPolicy: "auto",
-				MaxConcurrent:  1,
-				StallTimeout:   config.Duration{Duration: time.Minute},
+				Name:            "code-pr",
+				InstanceName:    "coder",
+				Harness:         "claude-code",
+				Workspace:       "git-clone",
+				Prompt:          promptPath,
+				ApprovalPolicy:  "auto",
+				ApprovalTimeout: config.Duration{Duration: 24 * time.Hour},
+				MaxConcurrent:   1,
+				StallTimeout:    config.Duration{Duration: time.Minute},
 			},
 		},
 		Workspace: config.WorkspaceConfig{Root: filepath.Join(root, "workspaces")},
@@ -1281,4 +1557,32 @@ func (b *blockingLifecycleTracker) AddLifecycleLabel(ctx context.Context, issueI
 		<-b.release
 	}
 	return b.FakeTracker.AddLifecycleLabel(ctx, issueID, label)
+}
+
+type failingLifecycleTracker struct {
+	*testutil.FakeTracker
+	addErr     error
+	removeErr  error
+	commentErr error
+}
+
+func (f *failingLifecycleTracker) AddLifecycleLabel(ctx context.Context, issueID string, label string) error {
+	if f.addErr != nil {
+		return f.addErr
+	}
+	return f.FakeTracker.AddLifecycleLabel(ctx, issueID, label)
+}
+
+func (f *failingLifecycleTracker) RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
+	return f.FakeTracker.RemoveLifecycleLabel(ctx, issueID, label)
+}
+
+func (f *failingLifecycleTracker) PostOperationalComment(ctx context.Context, issueID string, body string) error {
+	if f.commentErr != nil {
+		return f.commentErr
+	}
+	return f.FakeTracker.PostOperationalComment(ctx, issueID, body)
 }

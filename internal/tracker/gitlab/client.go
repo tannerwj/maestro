@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+const defaultHTTPClientTimeout = 30 * time.Second
 
 type Client struct {
 	baseURL      *url.URL
@@ -25,7 +28,7 @@ func NewClient(baseURL string, privateToken string) (*Client, error) {
 	return &Client{
 		baseURL:      parsed,
 		privateToken: privateToken,
-		httpClient:   &http.Client{},
+		httpClient:   &http.Client{Timeout: defaultHTTPClientTimeout},
 	}, nil
 }
 

@@ -155,7 +155,7 @@ func (a *Adapter) Kind() string {
 func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.ActiveRun, error) {
 	cmd := exec.CommandContext(ctx, a.binary, "app-server", "--listen", "stdio://")
 	cmd.Dir = cfg.Workdir
-	cmd.Env = mergeEnv(cfg.Env)
+	cmd.Env = harness.MergeEnv(cfg.Env)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -827,14 +827,6 @@ func writerOrDiscard(w io.Writer) io.Writer {
 		return io.Discard
 	}
 	return w
-}
-
-func mergeEnv(extra map[string]string) []string {
-	env := append([]string{}, os.Environ()...)
-	for key, value := range extra {
-		env = append(env, key+"="+value)
-	}
-	return env
 }
 
 func isExpectedStopError(err error) bool {

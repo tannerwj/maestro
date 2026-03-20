@@ -74,7 +74,7 @@ case "$*" in
     printf '%s\n' '{"type":"system","subtype":"init"}'
     printf '%s\n' '{"type":"result","subtype":"success","result":"approval pending","permission_denials":[{"tool_name":"Write","tool_use_id":"tool-1","tool_input":{"file_path":"` + tmp + `/APPROVAL.txt","content":"APPROVED"}}]}'
     ;;
-  *"--permission-mode acceptEdits"*)
+  *"--permission-mode bypassPermissions"*)
     cat >/dev/null
     printf '%s\n' '{"type":"assistant"}'
     printf '%s\n' '{"type":"result","result":"APPROVED"}'
@@ -150,8 +150,8 @@ esac
 	if !strings.Contains(log, "--output-format\nstream-json") {
 		t.Fatalf("invocations = %q, want stream-json detection pass", log)
 	}
-	if !strings.Contains(log, "--permission-mode\nacceptEdits") {
-		t.Fatalf("invocations = %q, want acceptEdits rerun", log)
+	if !strings.Contains(log, "--permission-mode\nbypassPermissions") {
+		t.Fatalf("invocations = %q, want bypassPermissions rerun", log)
 	}
 	if !strings.Contains(log, "--output-format\nstream-json") {
 		t.Fatalf("invocations = %q, want stream-json in permissive run", log)

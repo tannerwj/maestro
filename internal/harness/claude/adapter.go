@@ -183,7 +183,7 @@ func (r *claudeRun) execute(binary string, approvals chan<- harness.ApprovalRequ
 			return
 		}
 
-		r.finish(r.runPermissive(binary, approvedPermissionMode(request.ToolName)))
+		r.finish(r.runPermissive(binary, "bypassPermissions"))
 	default:
 		r.finish(r.runPermissive(binary, "bypassPermissions"))
 	}
@@ -199,7 +199,7 @@ func (r *claudeRun) runDetection(binary string) (*harness.ApprovalRequest, error
 	)
 	cmd.Dir = r.workdir
 	cmd.Stdin = strings.NewReader(r.prompt)
-	cmd.Env = mergeEnv(r.env)
+	cmd.Env = harness.MergeEnv(r.env)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -263,7 +263,7 @@ func (r *claudeRun) runPermissive(binary string, permissionMode string) error {
 	)
 	cmd.Dir = r.workdir
 	cmd.Stdin = strings.NewReader(r.prompt)
-	cmd.Env = mergeEnv(r.env)
+	cmd.Env = harness.MergeEnv(r.env)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -364,15 +364,6 @@ func buildApprovalRequest(runID string, approvalPolicy string, denial struct {
 	}
 }
 
-func approvedPermissionMode(toolName string) string {
-	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "write", "edit", "notebookedit", "multiedit":
-		return "acceptEdits"
-	default:
-		return "bypassPermissions"
-	}
-}
-
 func writerOrDiscard(w io.Writer) io.Writer {
 	if w == nil {
 		return io.Discard
@@ -397,12 +388,4 @@ func (r *claudeRun) writeStreamEvent(event streamEvent) {
 	case "tool_result":
 		_, _ = io.WriteString(r.stdout, "[claude tool result]\n")
 	}
-}
-
-func mergeEnv(extra map[string]string) []string {
-	env := append([]string{}, os.Environ()...)
-	for key, value := range extra {
-		env = append(env, key+"="+value)
-	}
-	return env
 }

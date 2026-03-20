@@ -788,7 +788,8 @@ When approval is required, the flow is:
 5. Gateway returns the response to the harness adapter.
 6. Harness adapter forwards the response to the agent subprocess.
 
-If the user does not respond within a configurable timeout, the action is rejected by default.
+If the user does not respond within a configurable timeout, Maestro records the request as timed
+out and fails the active run.
 
 ### 6.3 Agent Type Extensibility
 
@@ -1075,7 +1076,7 @@ Failure handling is fail-closed:
 - If Maestro is unavailable after connection establishment, deny the action.
 - If the hook payload is malformed or incomplete, deny the action.
 - If the approval channel cannot deliver the request, Maestro may continue retrying delivery until
-  the approval timeout expires, then deny the action.
+  the approval timeout expires, then mark the approval as timed out and fail the run.
 - If multiple responses arrive for the same `request_id`, the first valid response wins and later
   responses are ignored.
 
@@ -1250,9 +1251,9 @@ separate component — it is logic within the orchestrator that routes approval 
 
 ### 13.3 Timeout Behavior
 
-If the human does not respond within the approval timeout (default: 5 minutes, configurable per
-agent type), the action is **rejected** by default. The agent receives a rejection with reason
-"approval timeout" and can decide how to proceed (skip the action, try an alternative, or pause).
+If the human does not respond within the approval timeout (default: 24 hours, configurable per
+agent type), Maestro records the approval request as timed out and fails the run. The approval
+history entry uses reason `"approval timeout"` and outcome `timed_out`.
 
 ### 13.4 Audit Trail
 

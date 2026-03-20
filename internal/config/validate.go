@@ -6,6 +6,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/tjohnson/maestro/internal/prompt"
 )
 
 // ValidateMVP enforces the intentionally narrow Phase 1 configuration contract.
@@ -71,11 +73,17 @@ func ValidateMVP(cfg *Config) error {
 		if agent.StallTimeout.Duration <= 0 {
 			return fmt.Errorf("agent %q stall_timeout must be greater than zero", agent.Name)
 		}
+		if agent.ApprovalTimeout.Duration <= 0 {
+			return fmt.Errorf("agent %q approval_timeout must be greater than zero", agent.Name)
+		}
 		if !hasRepoPack {
 			if strings.TrimSpace(agent.Prompt) == "" {
 				return fmt.Errorf("agent %q prompt path is required", agent.Name)
 			}
 			if _, err := os.Stat(agent.Prompt); err != nil {
+				return fmt.Errorf("agent %q prompt %q: %w", agent.Name, agent.Prompt, err)
+			}
+			if _, err := prompt.ParseFile(agent.Prompt); err != nil {
 				return fmt.Errorf("agent %q prompt %q: %w", agent.Name, agent.Prompt, err)
 			}
 		}

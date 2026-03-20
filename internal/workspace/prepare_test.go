@@ -38,6 +38,59 @@ func TestPrepareClonesRepositoryAndCreatesBranch(t *testing.T) {
 	}
 }
 
+func TestPrepareCloneFailureRemovesStaleWorkspace(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(root, "workspaces"))
+	issue := domain.Issue{
+		Identifier: "team/project#43",
+		Meta: map[string]string{
+			"repo_url": filepath.Join(root, "missing.git"),
+		},
+	}
+
+	stalePath := filepath.Join(root, "workspaces", workspace.WorkspaceKey(issue.Identifier))
+	if err := os.MkdirAll(stalePath, 0o755); err != nil {
+		t.Fatalf("mkdir stale workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stalePath, "stale.txt"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("write stale file: %v", err)
+	}
+
+	_, err := manager.Prepare(context.Background(), issue, "coder")
+	if err == nil {
+		t.Fatal("expected prepare failure")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(stalePath, "stale.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("stale file stat error = %v, want not exists", statErr)
+	}
+	if _, statErr := os.Stat(stalePath); !os.IsNotExist(statErr) {
+		t.Fatalf("workspace path stat error = %v, want not exists", statErr)
+	}
+}
+
+func TestPrepareBranchFailureCleansUpClonedWorkspace(t *testing.T) {
+	repoURL := createSeedRepo(t)
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(root, "workspaces"))
+	issue := domain.Issue{
+		Identifier: "team/project#44",
+		Meta: map[string]string{
+			"repo_url": repoURL,
+		},
+	}
+
+	_, err := manager.Prepare(context.Background(), issue, "")
+	if err == nil {
+		t.Fatal("expected prepare failure")
+	}
+
+	workspacePath := filepath.Join(root, "workspaces", workspace.WorkspaceKey(issue.Identifier))
+	if _, statErr := os.Stat(workspacePath); !os.IsNotExist(statErr) {
+		t.Fatalf("workspace path stat error = %v, want not exists", statErr)
+	}
+}
+
 func TestPrepareEmptyCreatesCleanWorkspace(t *testing.T) {
 	root := t.TempDir()
 	manager := workspace.NewManager(filepath.Join(root, "workspaces"))
