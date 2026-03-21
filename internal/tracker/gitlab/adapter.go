@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
@@ -411,8 +410,8 @@ func (a *Adapter) normalizeProjectIssue(item issueResponse) domain.Issue {
 		Labels:      normalizeLabels(item.Labels),
 		Assignee:    issueAssignee(item),
 		URL:         item.WebURL,
-		CreatedAt:   parseGitLabTime(item.CreatedAt),
-		UpdatedAt:   parseGitLabTime(item.UpdatedAt),
+		CreatedAt:   trackerbase.ParseTime(item.CreatedAt),
+		UpdatedAt:   trackerbase.ParseTime(item.UpdatedAt),
 		Meta: map[string]string{
 			"project":         project,
 			"repo_url":        chooseRepoURL(a.project),
@@ -453,8 +452,8 @@ func (a *Adapter) normalizeEpicIssue(item issueResponse, epic epicResponse) (dom
 		Labels:      labels,
 		Assignee:    issueAssignee(item),
 		URL:         item.WebURL,
-		CreatedAt:   parseGitLabTime(item.CreatedAt),
-		UpdatedAt:   parseGitLabTime(item.UpdatedAt),
+		CreatedAt:   trackerbase.ParseTime(item.CreatedAt),
+		UpdatedAt:   trackerbase.ParseTime(item.UpdatedAt),
 		Meta: map[string]string{
 			"project":           project,
 			"project_id":        strconv.Itoa(item.ProjectID),
@@ -606,13 +605,6 @@ func resolveSourceRepoURL(baseURL string, repo string) string {
 	return root.String()
 }
 
-func parseGitLabTime(raw string) time.Time {
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return time.Time{}
-	}
-	return parsed
-}
 
 func formatGitLabIssueID(project string, iid int) string {
 	return fmt.Sprintf("gitlab:%s#%d", project, iid)

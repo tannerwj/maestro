@@ -21,6 +21,7 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
+	"github.com/tjohnson/maestro/internal/harness"
 	"github.com/tjohnson/maestro/internal/ops"
 	"github.com/tjohnson/maestro/internal/orchestrator"
 	"gopkg.in/yaml.v3"
@@ -927,10 +928,10 @@ func (s *Server) handleApprovalAction(w http.ResponseWriter, r *http.Request) {
 	action := parts[1]
 	decision := ""
 	switch action {
-	case "approve":
-		decision = "approve"
-	case "reject":
-		decision = "reject"
+	case harness.DecisionApprove:
+		decision = harness.DecisionApprove
+	case harness.DecisionReject:
+		decision = harness.DecisionReject
 	default:
 		http.NotFound(w, r)
 		return

@@ -226,9 +226,9 @@ func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.Act
 	a.mu.Unlock()
 
 	go func() {
-		_, _ = io.Copy(writerOrDiscard(cfg.Stderr), stderr)
+		_, _ = io.Copy(harness.WriterOrDiscard(cfg.Stderr), stderr)
 	}()
-	go run.readLoop(a.approvals, a.messages, writerOrDiscard(cfg.Stdout))
+	go run.readLoop(a.approvals, a.messages, harness.WriterOrDiscard(cfg.Stdout))
 	go func() {
 		err := cmd.Wait()
 		run.processCh <- err
@@ -555,7 +555,7 @@ func (r *codexRun) approve(decision harness.ApprovalDecision) error {
 		return fmt.Errorf("approval request %q not found", decision.RequestID)
 	}
 
-	if decision.Decision == "approve" {
+	if decision.Decision == harness.DecisionApprove {
 		return r.write(pending.approved)
 	}
 	return r.write(pending.rejected)
@@ -908,12 +908,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func writerOrDiscard(w io.Writer) io.Writer {
-	if w == nil {
-		return io.Discard
-	}
-	return w
-}
 
 func isExpectedStopError(err error) bool {
 	if err == nil {

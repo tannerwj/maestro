@@ -114,9 +114,9 @@ func (s *Service) ResolveApproval(requestID string, decision string) error {
 
 	s.mu.Lock()
 	delete(s.approvals, requestID)
-	s.approvalOrder = removeApprovalID(s.approvalOrder, requestID)
+	s.approvalOrder = removeFromOrder(s.approvalOrder, requestID)
 	if s.activeRun != nil && s.activeRun.ID == request.RunID {
-		if decision == "approve" {
+		if decision == harness.DecisionApprove {
 			s.activeRun.Status = domain.RunStatusActive
 			s.activeRun.ApprovalState = domain.ApprovalStateApproved
 		} else {
@@ -199,7 +199,7 @@ func (s *Service) expireTimedOutApprovals(now time.Time) []ApprovalView {
 			AgentName:       approval.AgentName,
 			ToolName:        approval.ToolName,
 			ApprovalPolicy:  approval.ApprovalPolicy,
-			Decision:        "reject",
+			Decision:        harness.DecisionReject,
 			Reason:          "approval timeout",
 			RequestedAt:     approval.RequestedAt,
 			DecidedAt:       now,
@@ -250,19 +250,10 @@ func approvalTimeoutFailureReason(approval ApprovalView) string {
 	return fmt.Sprintf("approval timeout while waiting on %s", approval.ToolName)
 }
 
-func removeApprovalID(order []string, requestID string) []string {
-	out := make([]string, 0, len(order))
-	for _, candidate := range order {
-		if candidate != requestID {
-			out = append(out, candidate)
-		}
-	}
-	return out
-}
 
 func (s *Service) appendApprovalHistory(entry ApprovalHistoryEntry) {
 	s.approvalHistory = append(s.approvalHistory, entry)
-	if len(s.approvalHistory) > 10 {
-		s.approvalHistory = s.approvalHistory[len(s.approvalHistory)-10:]
+	if len(s.approvalHistory) > maxApprovalHistory {
+		s.approvalHistory = s.approvalHistory[len(s.approvalHistory)-maxApprovalHistory:]
 	}
 }

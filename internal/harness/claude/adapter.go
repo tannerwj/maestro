@@ -86,8 +86,8 @@ func (a *Adapter) Start(ctx context.Context, cfg harness.RunConfig) (harness.Act
 		prompt:         cfg.Prompt,
 		workdir:        cfg.Workdir,
 		env:            cfg.Env,
-		stdout:         writerOrDiscard(cfg.Stdout),
-		stderr:         writerOrDiscard(cfg.Stderr),
+		stdout:         harness.WriterOrDiscard(cfg.Stdout),
+		stderr:         harness.WriterOrDiscard(cfg.Stderr),
 		approvalPolicy: cfg.ApprovalPolicy,
 		model:          cfg.Model,
 		reasoning:      cfg.Reasoning,
@@ -186,7 +186,7 @@ func (r *claudeRun) execute(binary string, approvals chan<- harness.ApprovalRequ
 			r.finish(r.ctx.Err())
 			return
 		}
-		if decision.Decision != "approve" {
+		if decision.Decision != harness.DecisionApprove {
 			r.finish(fmt.Errorf("approval rejected"))
 			return
 		}
@@ -388,12 +388,6 @@ func buildApprovalRequest(runID string, approvalPolicy string, denial struct {
 	}
 }
 
-func writerOrDiscard(w io.Writer) io.Writer {
-	if w == nil {
-		return io.Discard
-	}
-	return w
-}
 
 func (r *claudeRun) writeStreamEvent(event streamEvent) {
 	if strings.TrimSpace(event.Result) != "" {

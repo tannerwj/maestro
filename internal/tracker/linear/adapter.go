@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
@@ -335,8 +334,8 @@ func (a *Adapter) normalizeIssue(item issueNode) domain.Issue {
 		Labels:      labels,
 		Assignee:    assignee,
 		URL:         item.URL,
-		CreatedAt:   parseLinearTime(item.CreatedAt),
-		UpdatedAt:   parseLinearTime(item.UpdatedAt),
+		CreatedAt:   trackerbase.ParseTime(item.CreatedAt),
+		UpdatedAt:   trackerbase.ParseTime(item.UpdatedAt),
 		Meta: map[string]string{
 			"project":    item.Project.ID,
 			"repo_url":   a.source.Repo,
@@ -347,13 +346,6 @@ func (a *Adapter) normalizeIssue(item issueNode) domain.Issue {
 	}
 }
 
-func parseLinearTime(raw string) time.Time {
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return time.Time{}
-	}
-	return parsed
-}
 
 func parseLinearIssueID(issueID string) (string, error) {
 	trimmed := strings.TrimSpace(issueID)

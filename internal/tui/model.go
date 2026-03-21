@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/tjohnson/maestro/internal/domain"
+	"github.com/tjohnson/maestro/internal/harness"
 	"github.com/tjohnson/maestro/internal/orchestrator"
 )
 
@@ -242,7 +243,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 			pending := m.filteredPendingApprovals()
 			if len(pending) > 0 {
-				err := m.service.ResolveApproval(pending[m.selectedApproval].RequestID, "approve")
+				err := m.service.ResolveApproval(pending[m.selectedApproval].RequestID, harness.DecisionApprove)
 				if err != nil {
 					m.notice = "approval failed: " + err.Error()
 				} else {
@@ -254,7 +255,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			pending := m.filteredPendingApprovals()
 			if len(pending) > 0 {
-				err := m.service.ResolveApproval(pending[m.selectedApproval].RequestID, "reject")
+				err := m.service.ResolveApproval(pending[m.selectedApproval].RequestID, harness.DecisionReject)
 				if err != nil {
 					m.notice = "rejection failed: " + err.Error()
 				} else {

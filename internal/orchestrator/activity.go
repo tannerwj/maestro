@@ -5,28 +5,16 @@ import (
 	"io"
 	"sync"
 	"time"
-
-	"github.com/tjohnson/maestro/internal/domain"
 )
 
 const runOutputTailBytes = 4096
 
-type activityWriter struct {
-	target  io.Writer
-	onWrite func()
-}
-
-func (w *activityWriter) Write(p []byte) (int, error) {
-	if len(p) > 0 && w.onWrite != nil {
-		w.onWrite()
-	}
-	return w.target.Write(p)
-}
-
 func (s *Service) markRunActivity(runID string) {
-	s.updateRun(runID, func(r *domain.AgentRun) {
-		r.LastActivityAt = time.Now()
-	})
+	s.mu.Lock()
+	if s.activeRun != nil && s.activeRun.ID == runID {
+		s.activeRun.LastActivityAt = time.Now()
+	}
+	s.mu.Unlock()
 }
 
 type runOutputWriter struct {

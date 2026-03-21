@@ -493,91 +493,23 @@ func ResolveLifecycleTransition(defaults *LifecycleTransition, override *Lifecyc
 
 // ResolveCodexConfig merges hardcoded defaults, top-level codex_defaults, and per-agent override.
 func ResolveCodexConfig(defaults *CodexConfig, override *CodexConfig) CodexConfig {
-	resolved := CodexConfig{
+	base := &CodexConfig{
 		Model:         "gpt-5.4",
 		Reasoning:     "high",
 		MaxTurns:      20,
 		ThreadSandbox: "workspace-write",
 	}
-	if defaults != nil {
-		if defaults.Model != "" {
-			resolved.Model = defaults.Model
-		}
-		if defaults.Reasoning != "" {
-			resolved.Reasoning = defaults.Reasoning
-		}
-		if defaults.MaxTurns > 0 {
-			resolved.MaxTurns = defaults.MaxTurns
-		}
-		if defaults.ThreadSandbox != "" {
-			resolved.ThreadSandbox = defaults.ThreadSandbox
-		}
-		if defaults.TurnSandboxPolicy != nil {
-			resolved.TurnSandboxPolicy = cloneStringAnyMap(defaults.TurnSandboxPolicy)
-		}
-		if defaults.ExtraArgs != nil {
-			resolved.ExtraArgs = append([]string{}, defaults.ExtraArgs...)
-		}
-	}
-	if override != nil {
-		if override.Model != "" {
-			resolved.Model = override.Model
-		}
-		if override.Reasoning != "" {
-			resolved.Reasoning = override.Reasoning
-		}
-		if override.MaxTurns > 0 {
-			resolved.MaxTurns = override.MaxTurns
-		}
-		if override.ThreadSandbox != "" {
-			resolved.ThreadSandbox = override.ThreadSandbox
-		}
-		if override.TurnSandboxPolicy != nil {
-			resolved.TurnSandboxPolicy = cloneStringAnyMap(override.TurnSandboxPolicy)
-		}
-		if override.ExtraArgs != nil {
-			resolved.ExtraArgs = append([]string{}, override.ExtraArgs...)
-		}
-	}
-	return resolved
+	return *mergeCodexConfig(mergeCodexConfig(base, defaults), override)
 }
 
 // ResolveClaudeConfig merges hardcoded defaults, top-level claude_defaults, and per-agent override.
 func ResolveClaudeConfig(defaults *ClaudeConfig, override *ClaudeConfig) ClaudeConfig {
-	resolved := ClaudeConfig{
+	base := &ClaudeConfig{
 		Model:     "opus-4.6",
 		Reasoning: "high",
 		MaxTurns:  1,
 	}
-	if defaults != nil {
-		if defaults.Model != "" {
-			resolved.Model = defaults.Model
-		}
-		if defaults.Reasoning != "" {
-			resolved.Reasoning = defaults.Reasoning
-		}
-		if defaults.MaxTurns > 0 {
-			resolved.MaxTurns = defaults.MaxTurns
-		}
-		if defaults.ExtraArgs != nil {
-			resolved.ExtraArgs = append([]string{}, defaults.ExtraArgs...)
-		}
-	}
-	if override != nil {
-		if override.Model != "" {
-			resolved.Model = override.Model
-		}
-		if override.Reasoning != "" {
-			resolved.Reasoning = override.Reasoning
-		}
-		if override.MaxTurns > 0 {
-			resolved.MaxTurns = override.MaxTurns
-		}
-		if override.ExtraArgs != nil {
-			resolved.ExtraArgs = append([]string{}, override.ExtraArgs...)
-		}
-	}
-	return resolved
+	return *mergeClaudeConfig(mergeClaudeConfig(base, defaults), override)
 }
 
 func safeConfigKey(raw string) string {

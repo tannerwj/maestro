@@ -120,7 +120,7 @@ func (s *Service) ResolveMessage(requestID string, reply string, resolvedVia str
 
 	s.mu.Lock()
 	delete(s.messages, requestID)
-	s.messageOrder = removeMessageID(s.messageOrder, requestID)
+	s.messageOrder = removeFromOrder(s.messageOrder, requestID)
 	waiter, hasWaiter := s.messageWaiters[requestID]
 	if hasWaiter {
 		delete(s.messageWaiters, requestID)
@@ -175,7 +175,7 @@ func (s *Service) cancelControlMessage(requestID string, outcome string) {
 		return
 	}
 	delete(s.messages, requestID)
-	s.messageOrder = removeMessageID(s.messageOrder, requestID)
+	s.messageOrder = removeFromOrder(s.messageOrder, requestID)
 	delete(s.messageWaiters, requestID)
 	s.appendMessageHistory(MessageHistoryEntry{
 		RequestID:       request.RequestID,
@@ -197,20 +197,11 @@ func (s *Service) cancelControlMessage(requestID string, outcome string) {
 	_ = s.saveStateBestEffort()
 }
 
-func removeMessageID(order []string, requestID string) []string {
-	out := make([]string, 0, len(order))
-	for _, candidate := range order {
-		if candidate != requestID {
-			out = append(out, candidate)
-		}
-	}
-	return out
-}
 
 func (s *Service) appendMessageHistory(entry MessageHistoryEntry) {
 	s.messageHistory = append(s.messageHistory, entry)
-	if len(s.messageHistory) > 10 {
-		s.messageHistory = s.messageHistory[len(s.messageHistory)-10:]
+	if len(s.messageHistory) > maxMessageHistory {
+		s.messageHistory = s.messageHistory[len(s.messageHistory)-maxMessageHistory:]
 	}
 }
 

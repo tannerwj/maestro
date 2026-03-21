@@ -2,10 +2,20 @@ package tracker
 
 import (
 	"strings"
+	"time"
 
 	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
 )
+
+// ParseTime parses an RFC3339 timestamp, returning zero time on failure.
+func ParseTime(raw string) time.Time {
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
 
 // Default lifecycle label constants (prefix "maestro").
 const (

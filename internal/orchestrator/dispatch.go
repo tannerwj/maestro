@@ -385,8 +385,7 @@ func (s *Service) completeRun(runID string) {
 			}, fmt.Sprintf("Maestro run %s stopped and retry %d is scheduled: %s", runID, retry.Attempt, comment))
 			s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		}
-		s.releaseClaim(issueID)
-		_ = s.saveStateBestEffort()
+		s.finalizeRun(issueID)
 		return
 	}
 
@@ -400,11 +399,7 @@ func (s *Service) completeRun(runID string) {
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 		s.recordRunEventByFields("info", s.source.Name, runID, issueIdentifier, "tracker state updated for %s", issueIdentifier)
 	}
-	s.releaseClaim(issueID)
-	if s.limiter != nil {
-		s.limiter.Release()
-	}
-	_ = s.saveStateBestEffort()
+	s.finalizeRun(issueID)
 }
 
 func (s *Service) failRun(runID string, err error) {
@@ -475,11 +470,7 @@ func (s *Service) failRun(runID string, err error) {
 				activeLabel, doneLabel, failedLabel,
 			}, fmt.Sprintf("Maestro run %s stopped and retry %d is scheduled: %s", runID, retry.Attempt, stop.Reason))
 			s.refreshStoredIssueTimestamp(context.Background(), issueID)
-			s.releaseClaim(issueID)
-			if s.limiter != nil {
-				s.limiter.Release()
-			}
-			_ = s.saveStateBestEffort()
+			s.finalizeRun(issueID)
 			return
 		}
 		s.recordRunEventByFields("warn", s.source.Name, runID, issueIdentifier, "run %s stopped: %s", runID, stop.Reason)
@@ -489,11 +480,7 @@ func (s *Service) failRun(runID string, err error) {
 			s.applyTerminalLifecycle(context.Background(), issueID, onComplete, prefix, doneLabel, stop.Reason)
 		}
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
-		s.releaseClaim(issueID)
-		if s.limiter != nil {
-			s.limiter.Release()
-		}
-		_ = s.saveStateBestEffort()
+		s.finalizeRun(issueID)
 		return
 	}
 	if scheduledRetry {
@@ -502,11 +489,7 @@ func (s *Service) failRun(runID string, err error) {
 			activeLabel, doneLabel, failedLabel,
 		}, fmt.Sprintf("Maestro run %s failed and retry %d is scheduled: %v", runID, retry.Attempt, err))
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
-		s.releaseClaim(issueID)
-		if s.limiter != nil {
-			s.limiter.Release()
-		}
-		_ = s.saveStateBestEffort()
+		s.finalizeRun(issueID)
 		return
 	}
 	s.recordRunEventByFields("error", s.source.Name, runID, issueIdentifier, "run %s failed: %v", runID, err)
@@ -514,11 +497,7 @@ func (s *Service) failRun(runID string, err error) {
 		s.applyTerminalLifecycle(context.Background(), issueID, onFailure, prefix, failedLabel, fmt.Sprintf("Maestro run %s failed for %s: %v", runID, issueIdentifier, err))
 		s.refreshStoredIssueTimestamp(context.Background(), issueID)
 	}
-	s.releaseClaim(issueID)
-	if s.limiter != nil {
-		s.limiter.Release()
-	}
-	_ = s.saveStateBestEffort()
+	s.finalizeRun(issueID)
 }
 
 func (s *Service) isClaimed(issueID string) bool {
@@ -536,6 +515,14 @@ func (s *Service) updateRun(runID string, mutate func(*domain.AgentRun)) {
 	}
 	mutate(s.activeRun)
 	s.mu.Unlock()
+	_ = s.saveStateBestEffort()
+}
+
+func (s *Service) finalizeRun(issueID string) {
+	s.releaseClaim(issueID)
+	if s.limiter != nil {
+		s.limiter.Release()
+	}
 	_ = s.saveStateBestEffort()
 }
 

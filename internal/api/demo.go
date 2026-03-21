@@ -12,6 +12,7 @@ import (
 
 	"github.com/tjohnson/maestro/internal/config"
 	"github.com/tjohnson/maestro/internal/domain"
+	"github.com/tjohnson/maestro/internal/harness"
 	"github.com/tjohnson/maestro/internal/orchestrator"
 	"gopkg.in/yaml.v3"
 )
@@ -522,7 +523,7 @@ func (d *DemoRuntime) ResolveApproval(requestID string, decision string) error {
 	now := time.Now().UTC()
 	d.approvals = append(d.approvals[:index], d.approvals[index+1:]...)
 	outcome := "rejected"
-	if decision == "approve" {
+	if decision == harness.DecisionApprove {
 		outcome = "applied"
 	}
 	d.approvalHistory = append([]orchestrator.ApprovalHistoryEntry{{
@@ -548,7 +549,7 @@ func (d *DemoRuntime) ResolveApproval(requestID string, decision string) error {
 		}
 		d.runs[i].LastActivityAt = now
 		switch decision {
-		case "approve":
+		case harness.DecisionApprove:
 			d.runs[i].Status = domain.RunStatusActive
 			d.runs[i].ApprovalState = domain.ApprovalStateApproved
 			d.appendOutputLocked(d.runs[i].ID, "Approval granted, applying banner changes\n")

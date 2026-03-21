@@ -149,14 +149,14 @@ func (s *Supervisor) Snapshot() Snapshot {
 	sort.Slice(merged.ApprovalHistory, func(i, j int) bool {
 		return merged.ApprovalHistory[i].DecidedAt.After(merged.ApprovalHistory[j].DecidedAt)
 	})
-	if len(merged.ApprovalHistory) > 10 {
-		merged.ApprovalHistory = merged.ApprovalHistory[:10]
+	if len(merged.ApprovalHistory) > maxApprovalHistory {
+		merged.ApprovalHistory = merged.ApprovalHistory[:maxApprovalHistory]
 	}
 	sort.Slice(merged.RecentEvents, func(i, j int) bool {
 		return merged.RecentEvents[i].Time.After(merged.RecentEvents[j].Time)
 	})
-	if len(merged.RecentEvents) > 20 {
-		merged.RecentEvents = merged.RecentEvents[:20]
+	if len(merged.RecentEvents) > maxRecentEvents {
+		merged.RecentEvents = merged.RecentEvents[:maxRecentEvents]
 	}
 	sort.Slice(merged.ActiveRuns, func(i, j int) bool {
 		return merged.ActiveRuns[i].StartedAt.Before(merged.ActiveRuns[j].StartedAt)

@@ -23,6 +23,22 @@ import (
 	"github.com/tjohnson/maestro/internal/workspace"
 )
 
+const (
+	maxRecentEvents    = 20
+	maxApprovalHistory = 10
+	maxMessageHistory  = 10
+)
+
+func removeFromOrder(order []string, id string) []string {
+	out := order[:0:0]
+	for _, candidate := range order {
+		if candidate != id {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
 type Event struct {
 	Time    time.Time
 	Level   string
@@ -427,8 +443,8 @@ func (s *Service) recordEventWithContext(level string, ctx eventContext, message
 		Issue:   ctx.IssueIdentifier,
 		Message: msg,
 	})
-	if len(s.events) > 20 {
-		s.events = s.events[len(s.events)-20:]
+	if len(s.events) > maxRecentEvents {
+		s.events = s.events[len(s.events)-maxRecentEvents:]
 	}
 }
 

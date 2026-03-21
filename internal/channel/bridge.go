@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/tjohnson/maestro/internal/config"
+	"github.com/tjohnson/maestro/internal/harness"
 	"github.com/tjohnson/maestro/internal/orchestrator"
 	"github.com/tjohnson/maestro/internal/redact"
 )
@@ -569,9 +570,9 @@ func (b *Bridge) handleAction(ctx context.Context, channelName string, payload b
 	decision := ""
 	switch action.ActionID {
 	case "maestro_approve":
-		decision = "approve"
+		decision = harness.DecisionApprove
 	case "maestro_reject":
-		decision = "reject"
+		decision = harness.DecisionReject
 	case "maestro_message_start":
 		b.handleMessageAction(ctx, channelName, payload, action.Value, "start")
 		return
