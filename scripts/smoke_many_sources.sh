@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${MAESTRO_HARNESS:=claude-code}"
+: "${MAESTRO_CLAUDE_MODEL:=sonnet}"
+: "${MAESTRO_WORKSPACE:=git-clone}"
 : "${MAESTRO_APPROVAL_POLICY:=auto}"
 : "${MAESTRO_TIMEOUT_SECONDS:=900}"
 : "${MAESTRO_GITLAB_BASE_URL:=https://gitlab.com}"
@@ -202,6 +204,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
+run_failed() {
+  local state_file="${state_root}/runs.json"
+  [[ -f "${state_file}" ]] || return 1
+  grep -q '"status": "failed"' "${state_file}"
+}
+
 mkdir -p "${repo_src}"
 (
   cd "${repo_src}"
@@ -311,10 +319,11 @@ source_defaults:
 
 agent_defaults:
   harness: ${MAESTRO_HARNESS}
-  workspace: git-clone
+  workspace: ${MAESTRO_WORKSPACE}
   approval_policy: ${MAESTRO_APPROVAL_POLICY}
   max_concurrent: 2
   stall_timeout: 10m
+$(if [[ "${MAESTRO_HARNESS}" == "claude-code" ]]; then printf '  claude:\n    model: %s\n' "${MAESTRO_CLAUDE_MODEL}"; fi)
 
 user:
   name: "${MAESTRO_USER_NAME}"
@@ -442,6 +451,11 @@ deadline=$(( $(date +%s) + MAESTRO_TIMEOUT_SECONDS ))
 while (( $(date +%s) < deadline )); do
   if ! kill -0 "${maestro_pid}" 2>/dev/null; then
     echo "maestro exited before many-sources smoke completed" >&2
+    cat "${tmpdir}/maestro.stdout" >&2 || true
+    exit 1
+  fi
+  if run_failed; then
+    echo "Many-sources smoke run failed" >&2
     cat "${tmpdir}/maestro.stdout" >&2 || true
     exit 1
   fi

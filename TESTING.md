@@ -22,6 +22,31 @@ The hermetic suite now also covers:
 - explicit GitLab epic `epic_filter` vs `issue_filter` behavior
 - global and per-agent dispatch limiter behavior
 
+## Hermetic Maestro smoke
+
+For a credential-free end-to-end smoke of the real Maestro binary, run:
+
+```bash
+make smoke-hermetic
+```
+
+This smoke uses:
+
+- a local fake GitLab API
+- a local fake Linear GraphQL API
+- stub `claude` and `codex` binaries on `PATH`
+
+Coverage includes:
+
+- custom lifecycle label prefixes with routing labels in the same namespace
+- global `on_complete` defaults plus per-source lifecycle overrides
+- multi-turn Codex continuation
+- prompt template FuncMap helpers
+- local pack harness-config merge and explicit `extra_args: []` clearing
+- built-in `dev-claude` and `dev-codex` packs
+- repo-embedded pack prompt/context/harness-config directory population
+- `workspace:none` on a GitLab epic source
+
 ## Web verification
 
 Run the web checks before changing the browser UI or cutting a release with the embedded dashboard:
@@ -149,6 +174,11 @@ export MAESTRO_GITLAB_PROJECT=<namespace/project>
 ./scripts/smoke_gitlab.sh
 ```
 
+Optional overrides:
+
+- `MAESTRO_CLAUDE_MODEL` to pin a different Claude model alias for the live smoke. Default: `sonnet`.
+- `MAESTRO_WORKSPACE=none` to exercise the real tracker/orchestrator path without cloning a private repo.
+
 By default, `scripts/smoke_gitlab.sh` now provisions its own disposable GitLab issue with a unique
 label and closes it during cleanup. If you want to point the smoke at an existing issue pool
 instead, set:
@@ -212,6 +242,11 @@ For a full end-to-end Linear smoke using the real CLI/harness path:
 export MAESTRO_LINEAR_PROJECT="Maestro Testbed"
 ./scripts/smoke_linear.sh
 ```
+
+Optional overrides:
+
+- `MAESTRO_CLAUDE_MODEL` to pin a different Claude model alias for the live smoke. Default: `sonnet`.
+- `MAESTRO_WORKSPACE=none` to skip local workspace cloning and use an empty per-run workspace instead.
 
 By default, `scripts/smoke_linear.sh` now provisions its own disposable labeled issue, moves it into
 the configured workflow state, and marks it completed during cleanup. If you want to point the smoke

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${MAESTRO_HARNESS:=claude-code}"
+: "${MAESTRO_CLAUDE_MODEL:=sonnet}"
+: "${MAESTRO_WORKSPACE:=git-clone}"
 : "${MAESTRO_APPROVAL_POLICY:=auto}"
 : "${MAESTRO_TIMEOUT_SECONDS:=420}"
 : "${MAESTRO_GITLAB_BASE_URL:=https://gitlab.com}"
@@ -51,6 +53,12 @@ cleanup() {
   wait "${maestro_pid:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+run_failed() {
+  local state_file="${state_root}/runs.json"
+  [[ -f "${state_file}" ]] || return 1
+  grep -q '"status": "failed"' "${state_file}"
+}
 
 cat >"${gitlab_project_prompt_path}" <<EOF
 Create a file named MULTI_SOURCE_GITLAB_PROJECT.md in the repository root containing exactly ${gitlab_project_marker}.
@@ -125,31 +133,34 @@ agent_types:
     agent_pack: code-pr
     instance_name: gitlab-project-smoke
     harness: ${MAESTRO_HARNESS}
-    workspace: git-clone
+    workspace: ${MAESTRO_WORKSPACE}
     prompt: ${gitlab_project_prompt_path}
     approval_policy: ${MAESTRO_APPROVAL_POLICY}
     max_concurrent: 1
     stall_timeout: 10m
+$(if [[ "${MAESTRO_HARNESS}" == "claude-code" ]]; then printf '    claude:\n      model: %s\n' "${MAESTRO_CLAUDE_MODEL}"; fi)
 
   - name: gitlab-epic
     agent_pack: code-pr
     instance_name: gitlab-epic-smoke
     harness: ${MAESTRO_HARNESS}
-    workspace: git-clone
+    workspace: ${MAESTRO_WORKSPACE}
     prompt: ${gitlab_epic_prompt_path}
     approval_policy: ${MAESTRO_APPROVAL_POLICY}
     max_concurrent: 1
     stall_timeout: 10m
+$(if [[ "${MAESTRO_HARNESS}" == "claude-code" ]]; then printf '    claude:\n      model: %s\n' "${MAESTRO_CLAUDE_MODEL}"; fi)
 
   - name: linear
     agent_pack: code-pr
     instance_name: linear-smoke
     harness: ${MAESTRO_HARNESS}
-    workspace: git-clone
+    workspace: ${MAESTRO_WORKSPACE}
     prompt: ${linear_prompt_path}
     approval_policy: ${MAESTRO_APPROVAL_POLICY}
     max_concurrent: 1
     stall_timeout: 10m
+$(if [[ "${MAESTRO_HARNESS}" == "claude-code" ]]; then printf '    claude:\n      model: %s\n' "${MAESTRO_CLAUDE_MODEL}"; fi)
 
 workspace:
   root: ${workspace_root}
@@ -183,6 +194,11 @@ linear_result=""
 while (( $(date +%s) < deadline )); do
   if ! kill -0 "${maestro_pid}" 2>/dev/null; then
     echo "maestro exited before multi-source smoke completed" >&2
+    cat "${tmpdir}/maestro.stdout" >&2 || true
+    exit 1
+  fi
+  if run_failed; then
+    echo "Multi-source smoke run failed" >&2
     cat "${tmpdir}/maestro.stdout" >&2 || true
     exit 1
   fi

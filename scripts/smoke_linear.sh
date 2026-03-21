@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${MAESTRO_HARNESS:=claude-code}"
+: "${MAESTRO_CLAUDE_MODEL:=sonnet}"
+: "${MAESTRO_WORKSPACE:=git-clone}"
 : "${MAESTRO_APPROVAL_POLICY:=auto}"
 : "${MAESTRO_TIMEOUT_SECONDS:=180}"
 : "${MAESTRO_LINEAR_STATE:=Todo}"
@@ -42,6 +44,12 @@ run_is_idle() {
     return 1
   fi
   grep -q '"finished"' "${state_file}"
+}
+
+run_failed() {
+  local state_file="${state_root}/runs.json"
+  [[ -f "${state_file}" ]] || return 1
+  grep -q '"status": "failed"' "${state_file}"
 }
 
 cleanup() {
@@ -247,10 +255,11 @@ agent_types:
   - name: code-pr
     instance_name: smoke-agent
     harness: ${MAESTRO_HARNESS}
-    workspace: git-clone
+    workspace: ${MAESTRO_WORKSPACE}
     prompt: ${prompt_path}
     approval_policy: ${MAESTRO_APPROVAL_POLICY}
     max_concurrent: 1
+$(if [[ "${MAESTRO_HARNESS}" == "claude-code" ]]; then printf '    claude:\n      model: %s\n' "${MAESTRO_CLAUDE_MODEL}"; fi)
 
 workspace:
   root: ${workspace_root}
@@ -278,6 +287,11 @@ result_file=""
 while (( $(date +%s) < deadline )); do
   if ! kill -0 "${maestro_pid}" 2>/dev/null; then
     echo "maestro exited before smoke completed" >&2
+    cat "${tmpdir}/maestro.stdout" >&2 || true
+    exit 1
+  fi
+  if run_failed; then
+    echo "Linear smoke run failed" >&2
     cat "${tmpdir}/maestro.stdout" >&2 || true
     exit 1
   fi

@@ -209,7 +209,7 @@ func (r *claudeRun) runDetection(binary string) (*harness.ApprovalRequest, error
 		args = append(args, "--model", r.model)
 	}
 	if r.reasoning != "" {
-		args = append(args, "--config", "model_reasoning_effort="+r.reasoning)
+		args = append(args, "--effort", r.reasoning)
 	}
 	args = append(args, r.extraArgs...)
 	cmd := exec.CommandContext(r.ctx, binary, args...)
@@ -281,7 +281,7 @@ func (r *claudeRun) runPermissive(binary string, permissionMode string) error {
 		args = append(args, "--model", r.model)
 	}
 	if r.reasoning != "" {
-		args = append(args, "--config", "model_reasoning_effort="+r.reasoning)
+		args = append(args, "--effort", r.reasoning)
 	}
 	args = append(args, r.extraArgs...)
 	cmd := exec.CommandContext(r.ctx, binary, args...)

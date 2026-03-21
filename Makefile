@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: test build install release run inspect-config inspect-state inspect-runs reset-issue cleanup-workspaces smoke-gitlab smoke-linear smoke-multi-source smoke-many-sources web-embed
+.PHONY: test build install release run inspect-config inspect-state inspect-runs reset-issue cleanup-workspaces smoke-hermetic smoke-gitlab smoke-linear smoke-multi-source smoke-many-sources web-embed
 
 test:
 	go test ./...
@@ -69,6 +69,9 @@ cleanup-workspaces:
 		echo "CONFIG is required, or provide both WORKSPACE_ROOT and STATE_DIR"; \
 		exit 1; \
 	fi
+
+smoke-hermetic:
+	./scripts/smoke_hermetic.sh
 
 smoke-gitlab:
 	./scripts/smoke_gitlab.sh

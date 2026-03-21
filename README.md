@@ -72,6 +72,7 @@ make inspect-state CONFIG=demo/gitlab-claude-auto/maestro.yaml
 make inspect-runs CONFIG=demo/gitlab-claude-auto/maestro.yaml
 make reset-issue CONFIG=demo/gitlab-claude-auto/maestro.yaml ISSUE=group/project#123
 make cleanup-workspaces CONFIG=demo/gitlab-claude-auto/maestro.yaml
+make smoke-hermetic
 make smoke-multi-source
 make smoke-many-sources
 ```
@@ -105,10 +106,13 @@ Built-in agent packs:
 
 ## Smoke Scripts
 
+- Hermetic smoke: [scripts/smoke_hermetic.sh](scripts/smoke_hermetic.sh)
 - GitLab smoke: [scripts/smoke_gitlab.sh](scripts/smoke_gitlab.sh)
 - Linear smoke: [scripts/smoke_linear.sh](scripts/smoke_linear.sh)
 - Three-source smoke: [scripts/smoke_multi_source.sh](scripts/smoke_multi_source.sh)
 - Many-sources smoke with fresh fixtures: [scripts/smoke_many_sources.sh](scripts/smoke_many_sources.sh)
+
+The hermetic smoke is credential-free. It runs the real Maestro binary against a local fake GitLab/Linear server and stub Claude/Codex CLIs, and covers lifecycle routing, custom label prefixes, multi-turn Codex, prompt FuncMap rendering, local and repo-embedded packs, built-in `dev-claude` / `dev-codex` packs, and `workspace:none`.
 
 These scripts default to `approval_policy=auto`. They create a temporary config, run Maestro, wait for marker files in the workspace, and print the artifact paths. The GitLab smoke provisions and closes its own disposable issue by default so it does not depend on a pre-labeled tracker fixture already being open.
 The Linear smoke now does the same: it provisions a disposable issue in the configured project, moves it into the target state, and marks it completed during cleanup.

@@ -64,8 +64,8 @@ func TestAdapterStartAndWaitWithStubBinary(t *testing.T) {
 	if !strings.Contains(args, "--model\nopus-test") {
 		t.Fatalf("args = %q, want model override", args)
 	}
-	if !strings.Contains(args, "--config\nmodel_reasoning_effort=medium") {
-		t.Fatalf("args = %q, want reasoning config", args)
+	if !strings.Contains(args, "--effort\nmedium") {
+		t.Fatalf("args = %q, want effort override", args)
 	}
 }
 
