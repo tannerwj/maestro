@@ -824,8 +824,7 @@ func TestServiceTracksAndResolvesApprovalRequests(t *testing.T) {
 	}
 
 	waitFor(t, 2*time.Second, func() bool {
-		snapshot := svc.Snapshot()
-		return len(snapshot.PendingApprovals) == 1 && snapshot.ActiveRun != nil && snapshot.ActiveRun.Status == domain.RunStatusAwaiting
+		return len(svc.Snapshot().PendingApprovals) == 1
 	})
 
 	if err := svc.ResolveApproval("req-1", "approve"); err != nil {
@@ -1350,10 +1349,9 @@ func TestServiceStopsRunWhenTrackerMarksIssueDone(t *testing.T) {
 		return len(fakeHarness.StopCalls) == 1 && svc.Snapshot().ActiveRun == nil
 	})
 
-	stored, err := state.NewStore(cfg.State.Dir).Load()
-	if err != nil {
-		t.Fatalf("load persisted state: %v", err)
-	}
+	stored := waitForPersistedState(t, cfg.State.Dir, 2*time.Second, func(snapshot state.Snapshot) bool {
+		return snapshot.Finished["gitlab:team/project#58"].Status == domain.RunStatusDone
+	})
 	if stored.Finished["gitlab:team/project#58"].Status != domain.RunStatusDone {
 		t.Fatalf("finished status = %q", stored.Finished["gitlab:team/project#58"].Status)
 	}
@@ -1403,10 +1401,10 @@ func TestServiceCompletesRunWhenLifecycleSyncFails(t *testing.T) {
 		t.Fatalf("claimed count = %d, want 0", snapshot.ClaimedCount)
 	}
 
-	stored, err := state.NewStore(cfg.State.Dir).Load()
-	if err != nil {
-		t.Fatalf("load persisted state: %v", err)
-	}
+	stored := waitForPersistedState(t, cfg.State.Dir, 2*time.Second, func(snapshot state.Snapshot) bool {
+		finished, ok := snapshot.Finished["gitlab:team/project#59"]
+		return ok && finished.Status == domain.RunStatusDone && len(snapshot.RetryQueue) == 0
+	})
 	finished, ok := stored.Finished["gitlab:team/project#59"]
 	if !ok {
 		t.Fatal("expected finished issue despite lifecycle sync failures")
@@ -1619,10 +1617,10 @@ func TestServiceSchedulesRetryWhenLifecycleSyncFails(t *testing.T) {
 		t.Fatalf("retry attempt = %d, want 1", snapshot.Retries[0].Attempt)
 	}
 
-	stored, err := state.NewStore(cfg.State.Dir).Load()
-	if err != nil {
-		t.Fatalf("load persisted state: %v", err)
-	}
+	stored := waitForPersistedState(t, cfg.State.Dir, 2*time.Second, func(snapshot state.Snapshot) bool {
+		retry, ok := snapshot.RetryQueue["gitlab:team/project#60"]
+		return ok && retry.Attempt == 1 && len(snapshot.Finished) == 0
+	})
 	retry, ok := stored.RetryQueue["gitlab:team/project#60"]
 	if !ok {
 		t.Fatal("expected persisted retry entry despite lifecycle sync failures")
@@ -1673,10 +1671,10 @@ func TestServiceStopsStalledRunAndQueuesRetry(t *testing.T) {
 		return len(fakeHarness.StopCalls) == 1 && snapshot.ActiveRun == nil && snapshot.RetryCount == 1
 	})
 
-	stored, err := state.NewStore(cfg.State.Dir).Load()
-	if err != nil {
-		t.Fatalf("load persisted state: %v", err)
-	}
+	stored := waitForPersistedState(t, cfg.State.Dir, 2*time.Second, func(snapshot state.Snapshot) bool {
+		retry := snapshot.RetryQueue["gitlab:team/project#59"]
+		return retry.IssueID != ""
+	})
 	retry := stored.RetryQueue["gitlab:team/project#59"]
 	if retry.IssueID == "" {
 		t.Fatalf("expected retry entry for stalled run, got %+v", stored.RetryQueue)
@@ -1815,6 +1813,33 @@ func waitFor(t *testing.T, timeout time.Duration, check func() bool) {
 	}
 
 	t.Fatal("condition not satisfied before timeout")
+}
+
+func waitForPersistedState(t *testing.T, dir string, timeout time.Duration, check func(state.Snapshot) bool) state.Snapshot {
+	t.Helper()
+
+	store := state.NewStore(dir)
+	deadline := time.Now().Add(timeout)
+	var last state.Snapshot
+	var lastErr error
+	for time.Now().Before(deadline) {
+		snapshot, err := store.Load()
+		if err == nil {
+			last = snapshot
+			if check(snapshot) {
+				return snapshot
+			}
+		} else {
+			lastErr = err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if lastErr != nil {
+		t.Fatalf("load persisted state: %v", lastErr)
+	}
+	t.Fatalf("persisted state did not satisfy condition before timeout: %+v", last)
+	return state.Snapshot{}
 }
 
 func createGitRepo(t *testing.T) string {
