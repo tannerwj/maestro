@@ -125,12 +125,12 @@ func (s *Service) dispatchDueRetry(ctx context.Context) error {
 			s.recordSourceEvent("warn", s.source.Name, "retry lookup failed for %s: %v", candidate.issueID, err)
 			continue
 		}
-		if trackerbase.IsTerminal(issue) {
+		if trackerbase.IsTerminal(issue) || !trackerbase.MatchesFilterWithPrefix(issue, s.source.EffectiveIssueFilter(), s.labelPrefix()) {
 			s.mu.Lock()
 			delete(s.retryQueue, candidate.issueID)
 			s.mu.Unlock()
 			_ = s.saveStateBestEffort()
-			s.recordSourceEvent("warn", s.source.Name, "discarded retry for terminal issue %s", issue.Identifier)
+			s.recordSourceEvent("info", s.source.Name, "discarded retry for %s (no longer eligible)", issue.Identifier)
 			continue
 		}
 		return s.dispatch(ctx, issue)

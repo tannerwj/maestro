@@ -1,6 +1,7 @@
 /logs/
 /state/
 /workspaces/
+var/
 .envrc
 bin/
 dist/

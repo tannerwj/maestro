@@ -1,0 +1,86 @@
+defaults:
+  poll_interval: 10s
+  stall_timeout: 30m
+  label_prefix: maestro
+
+agent_packs_dir: agents
+
+user:
+  name: "TJ"
+  linear_username: "tannerwj"
+
+sources:
+  # Phase 1: Pick up Todo issues, implement them, create PR.
+  - name: swiftoot-implement
+    tracker: linear
+    connection:
+      token_env: LINEAR_API_KEY
+    project_url: https://linear.app/tannerwj/project/swiftoot-b7f277f40ef3/issues
+    repo: https://github.com/tannerwj/SwiftOOT.git
+    filter:
+      states: [todo, rework]
+    agent_type: dev-codex
+    poll_interval: 10s
+    max_attempts: 3
+    retry_base: 30s
+    max_retry_backoff: 10m
+    on_dispatch:
+      state: "In Progress"
+    on_complete:
+      state: "Human Review"
+      # No maestro:done — allows review agent to pick it up.
+      add_labels: []
+    on_failure:
+      state: "Rework"
+
+  # Phase 2: Pick up Human Review issues, review + merge.
+  - name: swiftoot-review
+    tracker: linear
+    connection:
+      token_env: LINEAR_API_KEY
+    project_url: https://linear.app/tannerwj/project/swiftoot-b7f277f40ef3/issues
+    repo: https://github.com/tannerwj/SwiftOOT.git
+    filter:
+      states: [human review]
+    agent_type: review-claude
+    poll_interval: 10s
+    max_attempts: 2
+    retry_base: 30s
+    on_complete:
+      state: "Done"
+    on_failure:
+      state: "Rework"
+
+agent_types:
+  - name: dev-codex
+    agent_pack: dev-codex
+    max_concurrent: 5
+    codex:
+      reasoning: high
+      max_turns: 20
+      thread_sandbox: danger-full-access
+      turn_sandbox_policy:
+        type: dangerFullAccess
+
+  - name: review-claude
+    agent_pack: review-claude
+    max_concurrent: 2
+
+workspace:
+  root: ./var/workspaces
+
+state:
+  dir: ./var/state
+  retry_base: 30s
+  max_retry_backoff: 10m
+  max_attempts: 3
+
+server:
+  enabled: true
+  host: 127.0.0.1
+  port: 7777
+
+logging:
+  level: info
+  dir: ./var/logs
+  max_files: 20

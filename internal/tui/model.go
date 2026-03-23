@@ -7,11 +7,76 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/tjohnson/maestro/internal/domain"
 	"github.com/tjohnson/maestro/internal/harness"
 	"github.com/tjohnson/maestro/internal/orchestrator"
 )
+
+// ---------------------------------------------------------------------------
+// Lipgloss styles
+// ---------------------------------------------------------------------------
+
+var (
+	colorBorder      = lipgloss.Color("240")
+	colorTitle       = lipgloss.Color("255")
+	colorGreen       = lipgloss.Color("82")
+	colorYellow      = lipgloss.Color("220")
+	colorRed         = lipgloss.Color("196")
+	colorDimGrey     = lipgloss.Color("245")
+	colorCyan        = lipgloss.Color("87")
+	colorMutedText   = lipgloss.Color("241")
+	colorWhite       = lipgloss.Color("255")
+	colorFocusBorder = lipgloss.Color("87")
+
+	styleTitle  = lipgloss.NewStyle().Bold(true).Foreground(colorTitle)
+	styleDim    = lipgloss.NewStyle().Foreground(colorMutedText)
+	styleGreen  = lipgloss.NewStyle().Foreground(colorGreen)
+	styleYellow = lipgloss.NewStyle().Foreground(colorYellow)
+	styleRed    = lipgloss.NewStyle().Foreground(colorRed)
+	styleGrey   = lipgloss.NewStyle().Foreground(colorDimGrey)
+	styleCyan   = lipgloss.NewStyle().Foreground(colorCyan)
+
+	maxVisibleEvents = 5
+)
+
+func panelStyle(width int, focused bool) lipgloss.Style {
+	borderColor := colorBorder
+	if focused {
+		borderColor = colorFocusBorder
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(width - 2). // -2 for border chars
+		PaddingLeft(1).
+		PaddingRight(1)
+}
+
+func panelTitleStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(colorTitle)
+}
+
+// statusStyle returns the appropriate color style for a status string.
+func statusStyle(status string) lipgloss.Style {
+	switch status {
+	case "OK", "RUN", "DONE":
+		return styleGreen
+	case "WAIT", "RETRY":
+		return styleYellow
+	case "ERROR", "FAIL":
+		return styleRed
+	case "IDLE", "PREP":
+		return styleGrey
+	default:
+		return styleDim
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Types and constants (unchanged)
+// ---------------------------------------------------------------------------
 
 type snapshotProvider interface {
 	Snapshot() orchestrator.Snapshot
@@ -45,6 +110,20 @@ const (
 	quickFilterAwaiting  quickFilterMode = "awaiting-approval"
 )
 
+type ModelOption func(*Model)
+
+func WithWebURL(url string) ModelOption {
+	return func(m *Model) { m.webURL = url }
+}
+
+func WithPollInterval(d time.Duration) ModelOption {
+	return func(m *Model) { m.pollInterval = d }
+}
+
+func WithShutdown(fn func() error) ModelOption {
+	return func(m *Model) { m.shutdown = fn }
+}
+
 type Model struct {
 	service          snapshotProvider
 	snapshot         orchestrator.Snapshot
@@ -64,9 +143,23 @@ type Model struct {
 	retrySort        retrySortMode
 	compact          bool
 	quickFilter      quickFilterMode
+	width            int
+	height           int
+	webURL           string
+	pollInterval     time.Duration
+	shutdown         func() error
+	shuttingDown     bool
+	shutdownComplete bool
+	shutdownErr      string
 }
 
-func NewModel(service snapshotProvider) Model {
+type shutdownFinishedMsg struct {
+	err error
+}
+
+type shutdownExitMsg struct{}
+
+func NewModel(service snapshotProvider, opts ...ModelOption) Model {
 	model := Model{
 		service:     service,
 		snapshot:    service.Snapshot(),
@@ -74,6 +167,11 @@ func NewModel(service snapshotProvider) Model {
 		runSort:     runSortStallRisk,
 		retrySort:   retrySortDueSoonest,
 		quickFilter: quickFilterAll,
+		width:       80,
+		height:      24,
+	}
+	for _, opt := range opts {
+		opt(&model)
 	}
 	model.normalizeFocus()
 	return model
@@ -85,7 +183,23 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case shutdownFinishedMsg:
+		if msg.err != nil {
+			m.shutdownErr = msg.err.Error()
+			m.notice = "shutdown warning: " + msg.err.Error()
+		}
+		m.shutdownComplete = true
+		return m, shutdownExitCmd()
+	case shutdownExitMsg:
+		return m, tea.Quit
 	case tea.KeyMsg:
+		if m.shuttingDown {
+			return m, nil
+		}
 		if m.replyMode {
 			switch msg.String() {
 			case "esc":
@@ -153,6 +267,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.shutdown != nil {
+				m.shuttingDown = true
+				m.notice = ""
+				return m, shutdownCmd(m.shutdown)
+			}
 			return m, tea.Quit
 		case "tab":
 			m.focus = m.nextFocus()
@@ -294,322 +413,762 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// ---------------------------------------------------------------------------
+// View — lipgloss-powered dashboard
+// ---------------------------------------------------------------------------
+
 func (m Model) View() string {
-	var b strings.Builder
+	if m.shuttingDown {
+		return m.renderShutdownView()
+	}
+
+	w := m.width
+	if w < 40 {
+		w = 40
+	}
+
 	filteredSources := m.filteredSourceSummaries()
 	filteredApprovals := m.filteredPendingApprovals()
 	filteredMessages := m.filteredPendingMessages()
 	filteredRetries := m.filteredRetries()
 	filteredActiveRuns := m.filteredActiveRuns()
-	filteredHistory := m.filteredApprovalHistory()
 	filteredEvents := m.filteredEvents()
-	selectedRunEvents := m.selectedRunEvents(filteredActiveRuns)
-	selectedSourceEvents := m.selectedSourceEvents(filteredSources)
-	selectedRunOutput := m.selectedRunOutput(filteredActiveRuns)
-	b.WriteString("Maestro MVP\n\n")
-	b.WriteString(fmt.Sprintf(
-		"Overview: sources=%d active=%d approvals=%d messages=%d retries=%d focus=%s run-sort=%s retry-sort=%s view=%s quick=%s\n",
-		len(filteredSources),
-		len(filteredActiveRuns),
-		len(filteredApprovals),
-		len(filteredMessages),
-		len(filteredRetries),
-		m.focus,
-		m.runSort,
-		m.retrySort,
-		compactLabel(m.compact),
-		m.quickFilter,
-	))
-	if m.snapshot.SourceName != "" {
-		b.WriteString(fmt.Sprintf("Snapshot source: %s\n", m.snapshot.SourceName))
-	}
-	if !m.snapshot.LastPollAt.IsZero() {
-		b.WriteString(fmt.Sprintf("Last poll: %s (%d issues)\n", m.snapshot.LastPollAt.Format(time.RFC3339), m.snapshot.LastPollCount))
-	}
-	b.WriteString(fmt.Sprintf("Claimed issues: %d\n\n", m.snapshot.ClaimedCount))
+
+	sections := make([]string, 0, 10)
+
+	// --- Header panel ---
+	sections = append(sections, m.renderHeader(w, filteredSources, filteredActiveRuns, filteredRetries))
+
+	// --- Notice ---
 	if m.notice != "" {
-		b.WriteString(fmt.Sprintf("Notice: %s\n\n", m.notice))
+		notice := styleYellow.Render("  " + m.notice)
+		sections = append(sections, notice)
 	}
+
+	// --- Filters bar ---
 	if filters := m.filterSummary(); filters != "" {
-		b.WriteString(fmt.Sprintf("Filters: %s\n\n", filters))
+		sections = append(sections, styleDim.Render("  Filters: "+filters))
 	}
+
+	// --- Sources panel ---
 	if len(filteredSources) > 0 {
-		b.WriteString("Source status:\n")
-		selectedSourceName := m.selectedSourceName(filteredSources)
-		for _, group := range groupSourceSummaries(filteredSources) {
-			b.WriteString(fmt.Sprintf("  %s:\n", group.Name))
-			for _, summary := range group.Sources {
-				marker := " "
-				if summary.Name == selectedSourceName && m.focus == focusSources {
-					marker = ">"
-				}
-				health := sourceHealth(summary, m.snapshot.RecentEvents)
-				lastPoll := "never"
-				if !summary.LastPollAt.IsZero() {
-					lastPoll = summary.LastPollAt.Format("15:04:05")
-				}
-				tagText := ""
-				if len(summary.Tags) > 0 {
-					tagText = fmt.Sprintf(" tags=%s", strings.Join(summary.Tags, ","))
-				}
-				if m.compact {
-					b.WriteString(fmt.Sprintf("   %s [%s] %s [%s] c=%d a=%d r=%d p=%d m=%d last=%s%s\n",
-						marker,
-						health,
-						summary.Name,
-						summary.Tracker,
-						summary.ClaimedCount,
-						summary.ActiveRunCount,
-						summary.RetryCount,
-						summary.PendingApprovals,
-						summary.PendingMessages,
-						lastPoll,
-						tagText,
-					))
-					continue
-				}
-				b.WriteString(fmt.Sprintf("   %s [%s] %s [%s]%s polled=%d last=%s claimed=%d active=%d retry=%d approvals=%d messages=%d\n",
-					marker,
-					health,
-					summary.Name,
-					summary.Tracker,
-					tagText,
-					summary.LastPollCount,
-					lastPoll,
-					summary.ClaimedCount,
-					summary.ActiveRunCount,
-					summary.RetryCount,
-					summary.PendingApprovals,
-					summary.PendingMessages,
-				))
-			}
+		sections = append(sections, m.renderSourcesPanel(w, filteredSources))
+
+		// Source drill-down when focused
+		if m.focus == focusSources {
+			sections = append(sections, m.renderSourceDetail(w, filteredSources, filteredActiveRuns, filteredRetries))
 		}
-		selected := filteredSources[m.selectedSource]
-		b.WriteString("\nSelected source:\n")
-		b.WriteString(fmt.Sprintf("  Name: %s\n", selected.Name))
-		b.WriteString(fmt.Sprintf("  Health: %s\n", sourceHealth(selected, m.snapshot.RecentEvents)))
-		b.WriteString(fmt.Sprintf("  Tracker: %s\n", selected.Tracker))
-		group := selected.DisplayGroup
-		if strings.TrimSpace(group) == "" {
-			group = selected.Tracker
-		}
-		b.WriteString(fmt.Sprintf("  Group: %s\n", group))
-		if len(selected.Tags) > 0 {
-			b.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(selected.Tags, ", ")))
-		}
-		if !selected.LastPollAt.IsZero() {
-			b.WriteString(fmt.Sprintf("  Last poll: %s\n", selected.LastPollAt.Format(time.RFC3339)))
-		}
-		b.WriteString(fmt.Sprintf("  Last poll count: %d\n", selected.LastPollCount))
-		b.WriteString(fmt.Sprintf("  Claimed: %d\n", selected.ClaimedCount))
-		b.WriteString(fmt.Sprintf("  Active runs: %d\n", selected.ActiveRunCount))
-		b.WriteString(fmt.Sprintf("  Retries: %d\n", selected.RetryCount))
-		b.WriteString(fmt.Sprintf("  Pending approvals: %d\n", selected.PendingApprovals))
-		b.WriteString(fmt.Sprintf("  Pending messages: %d\n", selected.PendingMessages))
-		b.WriteString(fmt.Sprintf("  Visible active runs: %d\n", countRunsForSource(filteredActiveRuns, selected.Name)))
-		b.WriteString(fmt.Sprintf("  Visible retries: %d\n", countRetriesForSource(filteredRetries, selected.Name)))
-		b.WriteString("\nSelected source events:\n")
-		if len(selectedSourceEvents) == 0 {
-			b.WriteString("  none\n")
-		} else {
-			for _, event := range selectedSourceEvents {
-				context := eventContextSummary(event)
-				if context != "" {
-					b.WriteString(fmt.Sprintf("  [%s] %s %s %s\n", event.Level, event.Time.Format("15:04:05"), context, event.Message))
-					continue
-				}
-				b.WriteString(fmt.Sprintf("  [%s] %s %s\n", event.Level, event.Time.Format("15:04:05"), event.Message))
-			}
-		}
-		b.WriteString("\n")
 	}
+
+	// --- Pending messages (only when present) ---
 	if len(filteredMessages) > 0 {
-		b.WriteString("Pending messages:\n")
-		for i, message := range filteredMessages {
-			marker := " "
-			if i == m.selectedMessage && m.focus == focusMessages {
-				marker = ">"
-			}
-			b.WriteString(fmt.Sprintf(" %s %s on %s [%s] %s ago\n", marker, messageLabel(message.Kind), message.IssueIdentifier, message.AgentName, timeAgo(message.RequestedAt)))
-		}
-		selected := filteredMessages[m.selectedMessage]
-		b.WriteString("\nSelected message:\n")
-		b.WriteString(fmt.Sprintf("  Request: %s\n", selected.RequestID))
-		b.WriteString(fmt.Sprintf("  Kind: %s\n", messageLabel(selected.Kind)))
-		b.WriteString(fmt.Sprintf("  Run: %s\n", selected.RunID))
-		if selected.AgentName != "" {
-			b.WriteString(fmt.Sprintf("  Agent: %s\n", selected.AgentName))
-		}
-		if selected.IssueIdentifier != "" {
-			b.WriteString(fmt.Sprintf("  Issue: %s\n", selected.IssueIdentifier))
-		}
-		if selected.Summary != "" {
-			b.WriteString(fmt.Sprintf("  Summary: %s\n", selected.Summary))
-		}
-		if selected.Body != "" {
-			b.WriteString(fmt.Sprintf("  Details:\n%s\n", indentBlock(strings.TrimSpace(selected.Body), "    ")))
-		}
-		if m.replyMode && m.focus == focusMessages {
-			b.WriteString(fmt.Sprintf("  Reply: %s_\n", m.replyInput))
-		}
-		b.WriteString("\n")
+		sections = append(sections, m.renderMessagesPanel(w, filteredMessages))
 	}
+
+	// --- Pending approvals (only when present) ---
 	if len(filteredApprovals) > 0 {
-		b.WriteString("Pending approvals:\n")
-		for i, approval := range filteredApprovals {
-			marker := " "
-			if i == m.selectedApproval && m.focus == focusApprovals {
-				marker = ">"
-			}
-			b.WriteString(fmt.Sprintf(" %s %s on %s [%s] %s ago\n", marker, approval.ToolName, approval.IssueIdentifier, approval.ApprovalPolicy, timeAgo(approval.RequestedAt)))
+		sections = append(sections, m.renderApprovalsPanel(w, filteredApprovals))
+	}
+
+	// --- Active Runs panel ---
+	sections = append(sections, m.renderRunsPanel(w, filteredActiveRuns))
+
+	// Run drill-down when focused
+	if m.focus == focusRuns && len(filteredActiveRuns) > 0 {
+		sections = append(sections, m.renderRunDetail(w, filteredActiveRuns))
+	}
+
+	// --- Retry Queue panel ---
+	sections = append(sections, m.renderRetriesPanel(w, filteredRetries))
+
+	// Retry drill-down when focused
+	if m.focus == focusRetries && len(filteredRetries) > 0 {
+		sections = append(sections, m.renderRetryDetail(w, filteredRetries))
+	}
+
+	// --- Events panel ---
+	sections = append(sections, m.renderEventsPanel(w, filteredEvents))
+
+	// --- Approval/message history (only when present) ---
+	filteredHistory := m.filteredApprovalHistory()
+	if len(filteredHistory) > 0 {
+		sections = append(sections, m.renderApprovalHistory(w, filteredHistory))
+	}
+	if msgHistoryLines := m.renderMessageHistory(w); msgHistoryLines != "" {
+		sections = append(sections, msgHistoryLines)
+	}
+
+	// --- Search bar ---
+	if m.searchMode {
+		searchLine := styleCyan.Render("  / ") + m.searchQuery + styleDim.Render("_")
+		sections = append(sections, searchLine)
+	}
+
+	// --- Footer keybindings ---
+	sections = append(sections, m.renderFooter())
+
+	return lipgloss.JoinVertical(lipgloss.Left, sections...) + "\n"
+}
+
+func (m Model) renderShutdownView() string {
+	w := m.width
+	if w < 40 {
+		w = 40
+	}
+	h := m.height
+	if h < 8 {
+		h = 8
+	}
+
+	var lines []string
+	if m.shutdownComplete {
+		lines = append(lines, panelTitleStyle().Render("Shutdown complete."))
+		lines = append(lines, "")
+		if strings.TrimSpace(m.shutdownErr) != "" {
+			lines = append(lines, styleYellow.Render("Completed with warning: "+m.shutdownErr))
+		} else {
+			lines = append(lines, "Maestro has stopped all runtime components cleanly.")
 		}
-		if len(filteredApprovals) > 0 {
-			selected := filteredApprovals[m.selectedApproval]
-			b.WriteString("\nSelected approval:\n")
-			b.WriteString(fmt.Sprintf("  Request: %s\n", selected.RequestID))
-			b.WriteString(fmt.Sprintf("  Run: %s\n", selected.RunID))
-			if selected.AgentName != "" {
-				b.WriteString(fmt.Sprintf("  Agent: %s\n", selected.AgentName))
-			}
-			if selected.IssueIdentifier != "" {
-				b.WriteString(fmt.Sprintf("  Issue: %s\n", selected.IssueIdentifier))
-			}
-			b.WriteString(fmt.Sprintf("  Policy: %s\n", selected.ApprovalPolicy))
-			if selected.ToolInput != "" {
-				b.WriteString(fmt.Sprintf("  Details:\n%s\n", indentBlock(strings.TrimSpace(selected.ToolInput), "    ")))
-			}
-			b.WriteString("\n")
+		lines = append(lines, "Returning to the terminal...")
+	} else {
+		lines = append(lines, panelTitleStyle().Render("Shutting down Maestro"))
+		lines = append(lines, "")
+		lines = append(lines, "Stopping runtime components and waiting for active work to exit cleanly.")
+		lines = append(lines, "This can take a few seconds if an agent process is still shutting down.")
+	}
+	if !m.shutdownComplete && strings.TrimSpace(m.shutdownErr) != "" {
+		lines = append(lines, "")
+		lines = append(lines, styleYellow.Render("Warning: "+m.shutdownErr))
+	}
+
+	content := strings.Join(lines, "\n")
+	panelWidth := w
+	if panelWidth > 80 {
+		panelWidth = 80
+	}
+	panel := panelStyle(panelWidth, true)
+	body := panel.Render(content)
+
+	return lipgloss.Place(
+		w,
+		h,
+		lipgloss.Center,
+		lipgloss.Center,
+		body,
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Header
+// ---------------------------------------------------------------------------
+
+func (m Model) renderHeader(w int, sources []orchestrator.SourceSummary, runs []domain.AgentRun, retries []orchestrator.RetryView) string {
+	totalSources := len(m.snapshot.SourceSummaries)
+	activeSources := 0
+	for _, s := range m.snapshot.SourceSummaries {
+		if s.ActiveRunCount > 0 || !s.LastPollAt.IsZero() {
+			activeSources++
 		}
 	}
 
-	if len(filteredRetries) == 0 {
-		b.WriteString("Retries: none\n")
-	} else {
-		b.WriteString(fmt.Sprintf("Retries (sort=%s):\n", m.retrySort))
-		for i, retry := range filteredRetries {
-			marker := " "
-			if i == m.selectedRetry && m.focus == focusRetries {
-				marker = ">"
-			}
-			if m.compact {
-				b.WriteString(fmt.Sprintf(" %s %s src=%s attempt=%d due=%s\n", marker, retry.IssueIdentifier, retry.SourceName, retry.Attempt, dueIn(retry.DueAt)))
-				continue
-			}
-			b.WriteString(fmt.Sprintf(" %s %s attempt=%d due=%s\n", marker, retry.IssueIdentifier, retry.Attempt, retry.DueAt.Format(time.RFC3339)))
+	totalAgents := len(runs)
+	retryCount := len(retries)
+
+	line1Parts := []string{
+		"Sources: " + styleGreen.Render(fmt.Sprintf("%d/%d", activeSources, totalSources)) + " active",
+		"Agents: " + styleGreen.Render(fmt.Sprintf("%d", totalAgents)) + " running",
+		"Retries: " + retryCountStyle(retryCount).Render(fmt.Sprintf("%d", retryCount)) + " queued",
+	}
+	line1 := strings.Join(line1Parts, "    ")
+
+	line2Parts := make([]string, 0, 4)
+	if !m.snapshot.LastPollAt.IsZero() && m.pollInterval > 0 {
+		nextPoll := time.Until(m.snapshot.LastPollAt.Add(m.pollInterval)).Round(time.Second)
+		if nextPoll < 0 {
+			line2Parts = append(line2Parts, "Next poll: "+styleYellow.Render("now"))
+		} else {
+			line2Parts = append(line2Parts, "Next poll: "+styleDim.Render("~"+nextPoll.String()))
 		}
-		selected := filteredRetries[m.selectedRetry]
-		b.WriteString("\nSelected retry:\n")
-		b.WriteString(fmt.Sprintf("  Source: %s\n", selected.SourceName))
-		b.WriteString(fmt.Sprintf("  Issue: %s\n", selected.IssueIdentifier))
-		b.WriteString(fmt.Sprintf("  Attempt: %d\n", selected.Attempt))
-		b.WriteString(fmt.Sprintf("  Due: %s (%s)\n", selected.DueAt.Format(time.RFC3339), dueIn(selected.DueAt)))
-		if selected.Error != "" {
-			b.WriteString(fmt.Sprintf("  Error: %s\n", selected.Error))
-		}
-		b.WriteString("\n")
+	} else if !m.snapshot.LastPollAt.IsZero() {
+		line2Parts = append(line2Parts, "Last poll: "+styleDim.Render(timeAgo(m.snapshot.LastPollAt)+" ago"))
+	}
+	if m.snapshot.ClaimedCount > 0 {
+		line2Parts = append(line2Parts, "Claimed: "+styleGreen.Render(fmt.Sprintf("%d", m.snapshot.ClaimedCount)))
+	}
+	if m.webURL != "" {
+		line2Parts = append(line2Parts, "Web: "+styleCyan.Render(m.webURL))
+	}
+	line2 := strings.Join(line2Parts, "    ")
+
+	content := line1
+	if line2 != "" {
+		content += "\n" + line2
 	}
 
-	if len(filteredActiveRuns) == 0 {
-		b.WriteString("Active runs: none\n")
-	} else {
-		b.WriteString(fmt.Sprintf("Active runs (sort=%s):\n", m.runSort))
-		for i, run := range filteredActiveRuns {
-			marker := " "
-			if i == m.selectedRun && m.focus == focusRuns {
-				marker = ">"
+	panel := panelStyle(w, false)
+	title := panelTitleStyle().Render(" MAESTRO ")
+	return panel.BorderTop(true).Render(title + "\n" + content)
+}
+
+func healthIcon(health string) string {
+	switch health {
+	case "OK":
+		return styleGreen.Render("[OK]")
+	case "RUN":
+		return styleGreen.Render("[RUN]")
+	case "WAIT":
+		return styleYellow.Render("[WAIT]")
+	case "RETRY":
+		return styleYellow.Render("[RETRY]")
+	case "ERROR":
+		return styleRed.Render("[ERR]")
+	case "FAIL":
+		return styleRed.Render("[FAIL]")
+	case "WARN":
+		return styleYellow.Render("[WARN]")
+	default:
+		return styleGrey.Render("[IDLE]")
+	}
+}
+
+func retryCountStyle(n int) lipgloss.Style {
+	if n > 0 {
+		return styleYellow
+	}
+	return styleGreen
+}
+
+// ---------------------------------------------------------------------------
+// Render: Sources
+// ---------------------------------------------------------------------------
+
+func (m Model) renderSourcesPanel(w int, sources []orchestrator.SourceSummary) string {
+	focused := m.focus == focusSources
+	var rows []string
+
+	selectedName := m.selectedSourceName(sources)
+	for _, group := range groupSourceSummaries(sources) {
+		for _, summary := range group.Sources {
+			indicator := "  "
+			if summary.Name == selectedName && focused {
+				indicator = styleCyan.Render("▸ ")
 			}
+
+			health := sourceHealth(summary, m.snapshot.RecentEvents)
+			healthStr := statusStyle(health).Render(padRight(health, 6))
+
+			dot := styleGreen.Render("●")
+			if health == "IDLE" {
+				dot = styleDim.Render("○")
+			} else if health == "ERROR" {
+				dot = styleRed.Render("●")
+			} else if health == "WAIT" || health == "RETRY" {
+				dot = styleYellow.Render("●")
+			}
+
+			nameStr := lipgloss.NewStyle().Width(22).Render(summary.Name)
+			trackerStr := styleDim.Render(padRight(summary.Tracker, 12))
+
+			active := styleGreen.Render(fmt.Sprintf("%d", summary.ActiveRunCount)) + " active"
+			retry := retryCountStyle(summary.RetryCount).Render(fmt.Sprintf("%d", summary.RetryCount)) + " retry"
+
+			filterStr := ""
+			if len(summary.FilterStates) > 0 {
+				filterStr += styleDim.Render(" states:") + strings.Join(summary.FilterStates, ",")
+			}
+			if len(summary.FilterLabels) > 0 {
+				filterStr += styleDim.Render(" labels:") + strings.Join(summary.FilterLabels, ",")
+			}
+
+			row := fmt.Sprintf("%s%s %s %s  %s  %s  %s%s",
+				indicator, dot, nameStr, trackerStr, active, retry, healthStr, filterStr)
+			rows = append(rows, row)
+		}
+	}
+
+	content := strings.Join(rows, "\n")
+	if content == "" {
+		content = styleDim.Render("No sources")
+	}
+
+	panel := panelStyle(w, focused)
+	title := panelTitleStyle().Render(" Sources ")
+	return panel.Render(title + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Source detail drill-down
+// ---------------------------------------------------------------------------
+
+func (m Model) renderSourceDetail(w int, sources []orchestrator.SourceSummary, runs []domain.AgentRun, retries []orchestrator.RetryView) string {
+	if len(sources) == 0 || m.selectedSource >= len(sources) {
+		return ""
+	}
+	selected := sources[m.selectedSource]
+	selectedSourceEvts := m.selectedSourceEvents(sources)
+	health := sourceHealth(selected, m.snapshot.RecentEvents)
+
+	var lines []string
+
+	// Compact summary line: name + health icon + tracker + counts
+	parts := []string{
+		selected.Name,
+		healthIcon(health),
+		styleDim.Render(selected.Tracker),
+		styleDim.Render("active:") + styleGreen.Render(fmt.Sprintf("%d", selected.ActiveRunCount)),
+		styleDim.Render("retry:") + retryCountStyle(selected.RetryCount).Render(fmt.Sprintf("%d", selected.RetryCount)),
+		styleDim.Render("claimed:") + fmt.Sprintf("%d", selected.ClaimedCount),
+	}
+	if len(selected.Tags) > 0 {
+		parts = append(parts, styleDim.Render("tags:")+strings.Join(selected.Tags, ","))
+	}
+	lines = append(lines, strings.Join(parts, "  "))
+	if strings.TrimSpace(selected.ProjectURL) != "" {
+		lines = append(lines, styleDim.Render("Project: ")+styleCyan.Render(selected.ProjectURL))
+	}
+
+	// Source events
+	if len(selectedSourceEvts) > 0 {
+		lines = append(lines, styleDim.Render("Events:"))
+		evts := tailSlice(selectedSourceEvts, maxVisibleEvents)
+		for _, event := range evts {
+			lines = append(lines, renderEventLine(event))
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	panel := panelStyle(w, false).BorderForeground(colorBorder)
+	return panel.Render(styleDim.Render(" Source Detail ") + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Active Runs
+// ---------------------------------------------------------------------------
+
+func (m Model) renderRunsPanel(w int, runs []domain.AgentRun) string {
+	focused := m.focus == focusRuns
+
+	if len(runs) == 0 {
+		panel := panelStyle(w, focused)
+		title := panelTitleStyle().Render(" Active Runs ")
+		return panel.Render(title + "\n" + styleDim.Render("No active runs"))
+	}
+
+	// Column widths
+	colIssue := 18
+	colAgent := 14
+	colSource := 22
+	colStatus := 6
+	colAge := 10
+	colIdle := 10
+
+	header := styleDim.Render(
+		"  " +
+			padRight("ISSUE", colIssue) +
+			padRight("AGENT", colAgent) +
+			padRight("SOURCE", colSource) +
+			padRight("STATUS", colStatus) +
+			padRight("AGE", colAge) +
+			padRight("IDLE", colIdle))
+	divider := styleDim.Render("  " + strings.Repeat("\u2500", colIssue+colAgent+colSource+colStatus+colAge+colIdle))
+
+	var rows []string
+	rows = append(rows, header)
+	rows = append(rows, divider)
+
+	for i, run := range runs {
+		indicator := "  "
+		if i == m.selectedRun && focused {
+			indicator = styleCyan.Render("▸ ")
+		}
+
+		badge := runStatusBadge(run)
+		badgeStr := statusStyle(badge).Render(padRight(badge, colStatus))
+
+		issue := padRight(run.Issue.Identifier, colIssue)
+		agent := padRight(run.AgentName, colAgent)
+		source := padRight(run.SourceName, colSource)
+		age := padRight(timeAgo(run.StartedAt), colAge)
+		idle := padRight(runIdle(run), colIdle)
+
+		if m.compact {
+			row := indicator + issue + agent + source + badgeStr + age + idle
+			rows = append(rows, row)
+		} else {
+			row := indicator + issue + agent + source + badgeStr + age + idle
+			rows = append(rows, row)
+			// Extra detail line in expanded mode
 			title := strings.TrimSpace(run.Issue.Title)
 			if title == "" {
 				title = "(untitled)"
 			}
-			if m.compact {
-				b.WriteString(fmt.Sprintf(" %s [%s] %s on %s src=%s idle=%s\n",
-					marker,
-					runStatusBadge(run),
-					run.AgentName,
-					run.Issue.Identifier,
-					run.SourceName,
-					runIdle(run),
-				))
-				continue
-			}
-			b.WriteString(fmt.Sprintf(" %s [%s] %s on %s [%s]\n", marker, runStatusBadge(run), run.AgentName, run.Issue.Identifier, run.Status))
-			b.WriteString(fmt.Sprintf("    Source: %s | Title: %s\n", run.SourceName, title))
-			b.WriteString(fmt.Sprintf("    Approval: %s/%s | Idle: %s\n", run.ApprovalPolicy, run.ApprovalState, runIdle(run)))
-			if run.WorkspacePath != "" {
-				b.WriteString(fmt.Sprintf("    Workspace: %s\n", run.WorkspacePath))
+			detail := styleDim.Render("    " + title)
+			if strings.TrimSpace(run.Issue.URL) != "" {
+				detail += "  " + styleCyan.Render(run.Issue.URL)
 			}
 			if run.Error != "" {
-				b.WriteString(fmt.Sprintf("    Error: %s\n", run.Error))
+				detail += "  " + styleRed.Render(run.Error)
 			}
-		}
-		selected := filteredActiveRuns[m.selectedRun]
-		b.WriteString("\nSelected run:\n")
-		b.WriteString(fmt.Sprintf("  Run: %s\n", selected.ID))
-		b.WriteString(fmt.Sprintf("  Agent: %s (%s)\n", selected.AgentName, selected.AgentType))
-		b.WriteString(fmt.Sprintf("  Harness: %s\n", selected.HarnessKind))
-		b.WriteString(fmt.Sprintf("  Source: %s\n", selected.SourceName))
-		b.WriteString(fmt.Sprintf("  Issue: %s\n", selected.Issue.Identifier))
-		if strings.TrimSpace(selected.Issue.Title) != "" {
-			b.WriteString(fmt.Sprintf("  Title: %s\n", selected.Issue.Title))
-		}
-		if strings.TrimSpace(selected.Issue.URL) != "" {
-			b.WriteString(fmt.Sprintf("  URL: %s\n", selected.Issue.URL))
-		}
-		b.WriteString(fmt.Sprintf("  Status: %s\n", selected.Status))
-		b.WriteString(fmt.Sprintf("  Attempt: %d\n", selected.Attempt))
-		b.WriteString(fmt.Sprintf("  Approval: %s/%s\n", selected.ApprovalPolicy, selected.ApprovalState))
-		if !selected.StartedAt.IsZero() {
-			b.WriteString(fmt.Sprintf("  Started: %s (%s ago)\n", selected.StartedAt.Format(time.RFC3339), timeAgo(selected.StartedAt)))
-		}
-		if !selected.LastActivityAt.IsZero() {
-			b.WriteString(fmt.Sprintf("  Last activity: %s (%s ago)\n", selected.LastActivityAt.Format(time.RFC3339), timeAgo(selected.LastActivityAt)))
-		}
-		if !selected.CompletedAt.IsZero() {
-			b.WriteString(fmt.Sprintf("  Completed: %s\n", selected.CompletedAt.Format(time.RFC3339)))
-		}
-		if selected.WorkspacePath != "" {
-			b.WriteString(fmt.Sprintf("  Workspace: %s\n", selected.WorkspacePath))
-		}
-		if selected.Error != "" {
-			b.WriteString(fmt.Sprintf("  Error: %s\n", selected.Error))
-		}
-		b.WriteString("\nSelected run output:\n")
-		if strings.TrimSpace(selectedRunOutput.StdoutTail) == "" && strings.TrimSpace(selectedRunOutput.StderrTail) == "" {
-			b.WriteString("  none\n")
-		} else {
-			if strings.TrimSpace(selectedRunOutput.StdoutTail) != "" {
-				b.WriteString("  Stdout:\n")
-				b.WriteString(indentBlock(strings.TrimSpace(selectedRunOutput.StdoutTail), "    "))
-				b.WriteString("\n")
-			}
-			if strings.TrimSpace(selectedRunOutput.StderrTail) != "" {
-				b.WriteString("  Stderr:\n")
-				b.WriteString(indentBlock(strings.TrimSpace(selectedRunOutput.StderrTail), "    "))
-				b.WriteString("\n")
-			}
-		}
-		b.WriteString("\nSelected run events:\n")
-		if len(selectedRunEvents) == 0 {
-			b.WriteString("  none\n")
-		} else {
-			for _, event := range selectedRunEvents {
-				b.WriteString(fmt.Sprintf("  [%s] %s %s\n", event.Level, event.Time.Format("15:04:05"), event.Message))
-			}
+			rows = append(rows, detail)
 		}
 	}
 
-	b.WriteString("\nApproval history:\n")
-	if len(filteredHistory) == 0 {
-		b.WriteString("  none\n")
-	} else {
-		for _, entry := range filteredHistory {
-			b.WriteString(fmt.Sprintf("  %s %s on %s (%s)\n", entry.Decision, entry.ToolName, entry.IssueIdentifier, entry.Outcome))
+	content := strings.Join(rows, "\n")
+	panel := panelStyle(w, focused)
+	title := panelTitleStyle().Render(" Active Runs ")
+	sortLabel := styleDim.Render(" sort:" + string(m.runSort))
+	return panel.Render(title + sortLabel + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Run detail drill-down
+// ---------------------------------------------------------------------------
+
+func (m Model) renderRunDetail(w int, runs []domain.AgentRun) string {
+	if len(runs) == 0 || m.selectedRun >= len(runs) {
+		return ""
+	}
+	selected := runs[m.selectedRun]
+	selectedRunEvts := m.selectedRunEvents(runs)
+	selectedOutput := m.selectedRunOutput(runs)
+
+	var lines []string
+
+	// Issue + title on one line.
+	issueLine := selected.Issue.Identifier
+	if strings.TrimSpace(selected.Issue.Title) != "" {
+		issueLine += styleDim.Render(" — ") + selected.Issue.Title
+	}
+	lines = append(lines, issueLine)
+	if strings.TrimSpace(selected.Issue.URL) != "" {
+		lines = append(lines, styleCyan.Render(selected.Issue.URL))
+	}
+
+	// Agent + harness + source on one line.
+	agentLabel := selected.AgentName
+	if selected.AgentType != "" && selected.AgentType != selected.AgentName {
+		agentLabel += styleDim.Render(" (") + selected.AgentType + styleDim.Render(")")
+	}
+	lines = append(lines, styleDim.Render("Agent: ")+agentLabel+styleDim.Render("  Harness: ")+selected.HarnessKind+styleDim.Render("  Source: ")+selected.SourceName)
+
+	// Status + attempt on one line.
+	badge := runStatusBadge(selected)
+	lines = append(lines, styleDim.Render("Status: ")+statusStyle(badge).Render(string(selected.Status))+styleDim.Render("  Attempt: ")+fmt.Sprintf("%d", selected.Attempt)+styleDim.Render("  Approval: ")+selected.ApprovalPolicy+"/"+string(selected.ApprovalState))
+
+	// Started + last activity on one line.
+	timeParts := make([]string, 0, 3)
+	if !selected.StartedAt.IsZero() {
+		timeParts = append(timeParts, styleDim.Render("Started: ")+timeAgo(selected.StartedAt)+" ago")
+	}
+	if !selected.LastActivityAt.IsZero() {
+		timeParts = append(timeParts, styleDim.Render("Last activity: ")+timeAgo(selected.LastActivityAt)+" ago")
+	}
+	if !selected.CompletedAt.IsZero() {
+		timeParts = append(timeParts, styleDim.Render("Completed: ")+selected.CompletedAt.Format(time.RFC3339))
+	}
+	if len(timeParts) > 0 {
+		lines = append(lines, strings.Join(timeParts, "  "))
+	}
+
+	// Run ID + workspace.
+	metaParts := []string{styleDim.Render("Run: ") + selected.ID}
+	if selected.WorkspacePath != "" {
+		metaParts = append(metaParts, styleDim.Render("Workspace: ")+selected.WorkspacePath)
+	}
+	lines = append(lines, strings.Join(metaParts, "  "))
+
+	if selected.Error != "" {
+		lines = append(lines, styleDim.Render("Error: ")+styleRed.Render(selected.Error))
+	}
+
+	// Output — word-wrapped and tailed to fit the panel.
+	maxOutputLines := 12
+	outputWidth := w - 8
+	if outputWidth < 40 {
+		outputWidth = 40
+	}
+	hasStdout := strings.TrimSpace(selectedOutput.StdoutTail) != ""
+	hasStderr := strings.TrimSpace(selectedOutput.StderrTail) != ""
+	if hasStdout || hasStderr {
+		lines = append(lines, "")
+		if hasStdout {
+			lines = append(lines, styleDim.Render("Stdout:"))
+			wrapped := wrapAndTail(strings.TrimSpace(selectedOutput.StdoutTail), outputWidth, maxOutputLines)
+			lines = append(lines, indentBlock(wrapped, "  "))
+		}
+		if hasStderr {
+			lines = append(lines, styleDim.Render("Stderr:"))
+			wrapped := wrapAndTail(strings.TrimSpace(selectedOutput.StderrTail), outputWidth, maxOutputLines)
+			lines = append(lines, indentBlock(wrapped, "  "))
 		}
 	}
 
-	b.WriteString("\nMessage history:\n")
-	historyCount := 0
+	// Run events
+	if len(selectedRunEvts) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, styleDim.Render("Events:"))
+		evts := tailSlice(selectedRunEvts, maxVisibleEvents)
+		for _, event := range evts {
+			lines = append(lines, renderEventLine(event))
+		}
+	}
+
+	content := strings.Join(lines, "\n")
+	panel := panelStyle(w, false).BorderForeground(colorBorder)
+	title := panelTitleStyle().Render(" Run Detail ")
+	return panel.Render(title + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Retry Queue
+// ---------------------------------------------------------------------------
+
+func (m Model) renderRetriesPanel(w int, retries []orchestrator.RetryView) string {
+	focused := m.focus == focusRetries
+
+	sortLabel := styleDim.Render(" sort:" + string(m.retrySort))
+
+	if len(retries) == 0 {
+		panel := panelStyle(w, focused)
+		title := panelTitleStyle().Render(" Retry Queue ")
+		return panel.Render(title + sortLabel + "\n" + styleDim.Render("No queued retries"))
+	}
+
+	colIssue := 18
+	colSource := 22
+	colAttempt := 10
+	colDue := 16
+	colError := 30
+
+	header := styleDim.Render(
+		"  " +
+			padRight("ISSUE", colIssue) +
+			padRight("SOURCE", colSource) +
+			padRight("ATTEMPT", colAttempt) +
+			padRight("DUE", colDue) +
+			padRight("ERROR", colError))
+	divider := styleDim.Render("  " + strings.Repeat("\u2500", colIssue+colSource+colAttempt+colDue+colError))
+
+	var rows []string
+	rows = append(rows, header)
+	rows = append(rows, divider)
+
+	for i, retry := range retries {
+		indicator := "  "
+		if i == m.selectedRetry && focused {
+			indicator = styleCyan.Render("▸ ")
+		}
+
+		issue := padRight(retry.IssueIdentifier, colIssue)
+		source := padRight(retry.SourceName, colSource)
+		attempt := styleYellow.Render(padRight(fmt.Sprintf("%d", retry.Attempt), colAttempt))
+		due := padRight(dueIn(retry.DueAt), colDue)
+		errStr := ""
+		if retry.Error != "" {
+			errStr = styleRed.Render(truncate(retry.Error, colError))
+		}
+
+		row := indicator + issue + source + attempt + due + errStr
+		rows = append(rows, row)
+	}
+
+	content := strings.Join(rows, "\n")
+	panel := panelStyle(w, focused)
+	title := panelTitleStyle().Render(" Retry Queue ")
+	return panel.Render(title + sortLabel + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Retry detail drill-down
+// ---------------------------------------------------------------------------
+
+func (m Model) renderRetryDetail(w int, retries []orchestrator.RetryView) string {
+	if len(retries) == 0 || m.selectedRetry >= len(retries) {
+		return ""
+	}
+	selected := retries[m.selectedRetry]
+
+	var lines []string
+	lines = append(lines, styleDim.Render("Source: ")+selected.SourceName)
+	lines = append(lines, styleDim.Render("Issue: ")+selected.IssueIdentifier)
+	lines = append(lines, styleDim.Render("Attempt: ")+styleYellow.Render(fmt.Sprintf("%d", selected.Attempt)))
+	lines = append(lines, styleDim.Render("Due: ")+selected.DueAt.Format(time.RFC3339)+styleDim.Render(" (")+dueIn(selected.DueAt)+styleDim.Render(")"))
+	if selected.Error != "" {
+		lines = append(lines, styleDim.Render("Error: ")+styleRed.Render(selected.Error))
+	}
+
+	content := strings.Join(lines, "\n")
+	panel := panelStyle(w, false).BorderForeground(colorBorder)
+	return panel.Render(styleDim.Render(" Retry Detail ") + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Messages
+// ---------------------------------------------------------------------------
+
+func (m Model) renderMessagesPanel(w int, messages []orchestrator.MessageView) string {
+	focused := m.focus == focusMessages
+
+	var rows []string
+	for i, message := range messages {
+		indicator := "  "
+		if i == m.selectedMessage && focused {
+			indicator = styleCyan.Render("▸ ")
+		}
+		label := messageLabel(message.Kind)
+		age := timeAgo(message.RequestedAt) + " ago"
+		row := indicator + styleYellow.Render(label) + " on " + message.IssueIdentifier +
+			styleDim.Render(" ["+message.AgentName+"] ") + styleDim.Render(age)
+		rows = append(rows, row)
+	}
+
+	content := strings.Join(rows, "\n")
+
+	// Selected message detail
+	if focused && len(messages) > 0 && m.selectedMessage < len(messages) {
+		selected := messages[m.selectedMessage]
+		content += "\n"
+		content += "\n" + styleDim.Render("Request: ") + selected.RequestID
+		content += "\n" + styleDim.Render("Kind: ") + messageLabel(selected.Kind)
+		content += "\n" + styleDim.Render("Run: ") + selected.RunID
+		if selected.AgentName != "" {
+			content += "\n" + styleDim.Render("Agent: ") + selected.AgentName
+		}
+		if selected.IssueIdentifier != "" {
+			content += "\n" + styleDim.Render("Issue: ") + selected.IssueIdentifier
+		}
+		if selected.Summary != "" {
+			content += "\n" + styleDim.Render("Summary: ") + selected.Summary
+		}
+		if selected.Body != "" {
+			content += "\n" + styleDim.Render("Details:")
+			content += "\n" + indentBlock(strings.TrimSpace(selected.Body), "  ")
+		}
+		if m.replyMode {
+			content += "\n" + styleCyan.Render("Reply: ") + m.replyInput + styleDim.Render("_")
+		}
+	}
+
+	panel := panelStyle(w, focused)
+	title := panelTitleStyle().Render(" Pending Messages ")
+	return panel.Render(title + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Approvals
+// ---------------------------------------------------------------------------
+
+func (m Model) renderApprovalsPanel(w int, approvals []orchestrator.ApprovalView) string {
+	focused := m.focus == focusApprovals
+
+	var rows []string
+	for i, approval := range approvals {
+		indicator := "  "
+		if i == m.selectedApproval && focused {
+			indicator = styleCyan.Render("▸ ")
+		}
+		age := timeAgo(approval.RequestedAt) + " ago"
+		row := indicator + styleYellow.Render(approval.ToolName) + " on " + approval.IssueIdentifier +
+			styleDim.Render(" ["+approval.ApprovalPolicy+"] ") + styleDim.Render(age)
+		rows = append(rows, row)
+	}
+
+	content := strings.Join(rows, "\n")
+
+	// Selected approval detail
+	if focused && len(approvals) > 0 && m.selectedApproval < len(approvals) {
+		selected := approvals[m.selectedApproval]
+		content += "\n"
+		content += "\n" + styleDim.Render("Request: ") + selected.RequestID
+		content += "\n" + styleDim.Render("Run: ") + selected.RunID
+		if selected.AgentName != "" {
+			content += "\n" + styleDim.Render("Agent: ") + selected.AgentName
+		}
+		if selected.IssueIdentifier != "" {
+			content += "\n" + styleDim.Render("Issue: ") + selected.IssueIdentifier
+		}
+		content += "\n" + styleDim.Render("Policy: ") + selected.ApprovalPolicy
+		if selected.ToolInput != "" {
+			content += "\n" + styleDim.Render("Details:")
+			content += "\n" + indentBlock(strings.TrimSpace(selected.ToolInput), "  ")
+		}
+	}
+
+	panel := panelStyle(w, focused)
+	title := panelTitleStyle().Render(" Pending Approvals ")
+	return panel.Render(title + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Events
+// ---------------------------------------------------------------------------
+
+func (m Model) renderEventsPanel(w int, events []orchestrator.Event) string {
+	visible := tailSlice(events, maxVisibleEvents)
+	var rows []string
+	for _, event := range visible {
+		rows = append(rows, renderEventLine(event))
+	}
+
+	content := strings.Join(rows, "\n")
+	if content == "" {
+		content = styleDim.Render("No recent events")
+	}
+	// Pad to minimum height so the panel doesn't start tiny.
+	lines := strings.Count(content, "\n") + 1
+	for lines < maxVisibleEvents {
+		content += "\n"
+		lines++
+	}
+
+	panel := panelStyle(w, false)
+	title := panelTitleStyle().Render(" Events ")
+	return panel.Render(title + "\n" + content)
+}
+
+func renderEventLine(event orchestrator.Event) string {
+	timeStr := styleDim.Render(event.Time.Format("15:04"))
+
+	var levelStr string
+	switch strings.ToUpper(event.Level) {
+	case "ERROR":
+		levelStr = styleRed.Render("ERROR")
+	case "WARN":
+		levelStr = styleYellow.Render("WARN ")
+	default:
+		levelStr = styleDim.Render("INFO ")
+	}
+
+	context := eventContextSummary(event)
+	msg := event.Message
+	if context != "" {
+		msg = styleDim.Render(context) + " " + msg
+	}
+
+	return "  " + timeStr + "  " + levelStr + "  " + msg
+}
+
+// ---------------------------------------------------------------------------
+// Render: Approval history (only when present)
+// ---------------------------------------------------------------------------
+
+func (m Model) renderApprovalHistory(w int, history []orchestrator.ApprovalHistoryEntry) string {
+	var rows []string
+	for _, entry := range history {
+		rows = append(rows, "  "+entry.Decision+" "+entry.ToolName+" on "+entry.IssueIdentifier+styleDim.Render(" ("+entry.Outcome+")"))
+	}
+	content := strings.Join(rows, "\n")
+	panel := panelStyle(w, false)
+	title := panelTitleStyle().Render(" Approval History ")
+	return panel.Render(title + "\n" + content)
+}
+
+// ---------------------------------------------------------------------------
+// Render: Message history (only when present)
+// ---------------------------------------------------------------------------
+
+func (m Model) renderMessageHistory(w int) string {
+	var rows []string
 	for _, entry := range m.snapshot.MessageHistory {
 		if !m.matchesSearch(entry.AgentName, entry.IssueIdentifier, entry.Summary, entry.Reply, entry.Outcome) {
 			continue
@@ -618,39 +1177,102 @@ func (m Model) View() string {
 		if via == "" {
 			via = "operator"
 		}
-		b.WriteString(fmt.Sprintf("  %s on %s (%s via %s)\n", messageLabel(entry.Kind), entry.IssueIdentifier, entry.Outcome, via))
-		historyCount++
+		rows = append(rows, "  "+messageLabel(entry.Kind)+" on "+entry.IssueIdentifier+styleDim.Render(" ("+entry.Outcome+" via "+via+")"))
 	}
-	if historyCount == 0 {
-		b.WriteString("  none\n")
+	if len(rows) == 0 {
+		return ""
 	}
-
-	b.WriteString("\nRecent events:\n")
-	if len(filteredEvents) == 0 {
-		b.WriteString("  none\n")
-	} else {
-		for _, event := range filteredEvents {
-			context := eventContextSummary(event)
-			if context != "" {
-				b.WriteString(fmt.Sprintf("  [%s] %s %s %s\n", event.Level, event.Time.Format("15:04:05"), context, event.Message))
-				continue
-			}
-			b.WriteString(fmt.Sprintf("  [%s] %s %s\n", event.Level, event.Time.Format("15:04:05"), event.Message))
-		}
-	}
-
-	if m.searchMode {
-		b.WriteString(fmt.Sprintf("\nSearch: %s_\n", m.searchQuery))
-	}
-	b.WriteString("\nKeys: tab change focus, j/k move, a approve, r reject, e reply to message, s send start, / search, f cycle group, u attention filter, w awaiting filter, c clear filters, o run sort, O retry sort, v compact, q quit.\n")
-	return b.String()
+	content := strings.Join(rows, "\n")
+	panel := panelStyle(w, false)
+	title := panelTitleStyle().Render(" Message History ")
+	return panel.Render(title + "\n" + content)
 }
+
+// ---------------------------------------------------------------------------
+// Render: Footer
+// ---------------------------------------------------------------------------
+
+func (m Model) renderFooter() string {
+	keys := []string{
+		"tab", "focus",
+		"j/k", "move",
+		"v", "compact",
+		"/", "search",
+		"o", "sort runs",
+		"O", "sort retries",
+		"f", "group",
+		"c", "clear",
+		"q", "quit",
+	}
+
+	// Add context-specific keys
+	if m.focus == focusApprovals {
+		keys = append(keys, "a", "approve", "r", "reject")
+	}
+	if m.focus == focusMessages {
+		keys = append(keys, "e", "reply", "s", "start")
+	}
+
+	var parts []string
+	for i := 0; i+1 < len(keys); i += 2 {
+		parts = append(parts, styleDim.Render(keys[i])+" "+styleDim.Render(keys[i+1]))
+	}
+	return " " + styleDim.Render(strings.Join(parts, styleDim.Render(" · ")))
+}
+
+// ---------------------------------------------------------------------------
+// Helpers: string formatting
+// ---------------------------------------------------------------------------
+
+func padRight(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(s))
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func tailSlice[T any](items []T, n int) []T {
+	if len(items) <= n {
+		return items
+	}
+	return items[len(items)-n:]
+}
+
+// ---------------------------------------------------------------------------
+// Tick command (unchanged)
+// ---------------------------------------------------------------------------
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
+
+func shutdownCmd(fn func() error) tea.Cmd {
+	return func() tea.Msg {
+		return shutdownFinishedMsg{err: fn()}
+	}
+}
+
+func shutdownExitCmd() tea.Cmd {
+	return tea.Tick(350*time.Millisecond, func(time.Time) tea.Msg {
+		return shutdownExitMsg{}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Sort mode cycling (unchanged)
+// ---------------------------------------------------------------------------
 
 func (m runSortMode) next() runSortMode {
 	order := []runSortMode{runSortStallRisk, runSortApprovalFirst, runSortOldest, runSortNewest}
@@ -678,6 +1300,10 @@ func (m quickFilterMode) toggle(target quickFilterMode) quickFilterMode {
 	}
 	return target
 }
+
+// ---------------------------------------------------------------------------
+// Selection clamping (unchanged)
+// ---------------------------------------------------------------------------
 
 func (m *Model) clampSelection() {
 	m.normalizeFocus()
@@ -737,6 +1363,10 @@ func (m *Model) clampSelection() {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Filtering methods (unchanged)
+// ---------------------------------------------------------------------------
 
 func (m Model) filteredSourceSummaries() []orchestrator.SourceSummary {
 	out := make([]orchestrator.SourceSummary, 0, len(m.snapshot.SourceSummaries))
@@ -907,6 +1537,10 @@ func (m Model) selectedSourceName(summaries []orchestrator.SourceSummary) string
 	return summaries[m.selectedSource].Name
 }
 
+// ---------------------------------------------------------------------------
+// Filter/search helpers (unchanged)
+// ---------------------------------------------------------------------------
+
 func (m Model) visibleSourceNames() map[string]struct{} {
 	visible := map[string]struct{}{}
 	for _, summary := range m.filteredSourceSummaries() {
@@ -1000,6 +1634,10 @@ func (m Model) filterSummary() string {
 	return strings.Join(parts, " ")
 }
 
+// ---------------------------------------------------------------------------
+// Focus management (unchanged)
+// ---------------------------------------------------------------------------
+
 func (m *Model) normalizeFocus() {
 	hasSources := len(m.filteredSourceSummaries()) > 0
 	hasRuns := len(m.filteredActiveRuns()) > 0
@@ -1065,6 +1703,47 @@ func (m Model) nextFocus() focusPane {
 	return options[0]
 }
 
+// ---------------------------------------------------------------------------
+// Utility helpers (unchanged)
+// ---------------------------------------------------------------------------
+
+// wrapAndTail word-wraps text to width, then returns only the last maxLines lines.
+func wrapAndTail(text string, width int, maxLines int) string {
+	if width < 10 {
+		width = 10
+	}
+	var wrapped []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimRight(line, " \t")
+		// Filter out noise lines from harness stream events.
+		if strings.TrimSpace(line) == "[claude assistant event]" {
+			continue
+		}
+		if len(line) <= width {
+			wrapped = append(wrapped, line)
+			continue
+		}
+		// Word-wrap long lines.
+		for len(line) > 0 {
+			if len(line) <= width {
+				wrapped = append(wrapped, line)
+				break
+			}
+			// Find last space before width.
+			cut := strings.LastIndex(line[:width], " ")
+			if cut <= 0 {
+				cut = width // no space — hard break
+			}
+			wrapped = append(wrapped, line[:cut])
+			line = strings.TrimLeft(line[cut:], " ")
+		}
+	}
+	if len(wrapped) > maxLines {
+		wrapped = wrapped[len(wrapped)-maxLines:]
+	}
+	return strings.Join(wrapped, "\n")
+}
+
 func indentBlock(raw string, prefix string) string {
 	lines := strings.Split(raw, "\n")
 	for i := range lines {
@@ -1081,15 +1760,12 @@ func compactLabel(compact bool) string {
 }
 
 func eventContextSummary(event orchestrator.Event) string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 2)
 	if strings.TrimSpace(event.Source) != "" {
 		parts = append(parts, event.Source)
 	}
 	if strings.TrimSpace(event.Issue) != "" {
 		parts = append(parts, event.Issue)
-	}
-	if strings.TrimSpace(event.RunID) != "" {
-		parts = append(parts, "run="+event.RunID)
 	}
 	if len(parts) == 0 {
 		return ""

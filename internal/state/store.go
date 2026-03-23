@@ -152,6 +152,10 @@ func (s *Store) Path() string {
 	return s.path
 }
 
+func (s *Store) Dir() string {
+	return filepath.Dir(s.path)
+}
+
 func (s *Store) Load() (Snapshot, error) {
 	raw, err := os.ReadFile(s.path)
 	if err != nil {

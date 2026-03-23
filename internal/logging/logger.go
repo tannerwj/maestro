@@ -14,8 +14,14 @@ import (
 	"github.com/tjohnson/maestro/internal/redact"
 )
 
-// New creates a JSON logger that writes to stdout and a timestamped file.
-func New(level string, dir string, maxFiles int) (*slog.Logger, func() error, error) {
+// New creates a JSON logger that writes to a timestamped file and optionally stdout.
+// When fileOnly is true, logs go only to the file (use when TUI owns stdout).
+func New(level string, dir string, maxFiles int, opts ...Option) (*slog.Logger, func() error, error) {
+	cfg := options{fileOnly: false}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
 	}
@@ -26,7 +32,12 @@ func New(level string, dir string, maxFiles int) (*slog.Logger, func() error, er
 		return nil, nil, err
 	}
 
-	handler := newRedactingHandler(slog.NewJSONHandler(io.MultiWriter(os.Stdout, file), &slog.HandlerOptions{
+	var writer io.Writer = file
+	if !cfg.fileOnly {
+		writer = io.MultiWriter(os.Stdout, file)
+	}
+
+	handler := newRedactingHandler(slog.NewJSONHandler(writer, &slog.HandlerOptions{
 		Level: parseLevel(level),
 	}))
 
@@ -36,6 +47,16 @@ func New(level string, dir string, maxFiles int) (*slog.Logger, func() error, er
 	}
 
 	return slog.New(handler), file.Close, nil
+}
+
+type options struct {
+	fileOnly bool
+}
+
+type Option func(*options)
+
+func FileOnly() Option {
+	return func(o *options) { o.fileOnly = true }
 }
 
 func parseLevel(level string) slog.Level {

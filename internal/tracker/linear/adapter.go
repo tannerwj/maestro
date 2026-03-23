@@ -35,9 +35,19 @@ query($projectId: ID!, $after: String) {
   }
 }`
 
-const projectLookupQuery = `
+const projectLookupByNameQuery = `
 query($name: String!) {
   projects(first: 1, filter: { name: { eq: $name } }) {
+    nodes {
+      id
+      name
+    }
+  }
+}`
+
+const projectLookupBySlugQuery = `
+query($slugId: String!) {
+  projects(first: 1, filter: { slugId: { eq: $slugId } }) {
     nodes {
       id
       name
@@ -64,7 +74,7 @@ query($id: String!) {
 }`
 
 const teamStatesQuery = `
-query($teamId: ID!) {
+query($teamId: String!) {
   team(id: $teamId) {
     states {
       nodes {
@@ -262,29 +272,67 @@ func (a *Adapter) resolveProjectID(ctx context.Context) (string, error) {
 	}
 	a.mu.Unlock()
 
-	project := strings.TrimSpace(a.source.Connection.Project)
-	if project == "" {
-		return "", fmt.Errorf("linear source %q missing connection.project", a.source.Name)
-	}
-
-	var resp struct {
+	type projectResp struct {
 		Projects struct {
 			Nodes []struct {
 				ID string `json:"id"`
 			} `json:"nodes"`
 		} `json:"projects"`
 	}
-	if err := a.client.query(ctx, projectLookupQuery, map[string]any{"name": project}, &resp); err == nil {
+
+	// Try slug from project_url first (e.g., https://linear.app/team/project/slug-abc123/issues).
+	if slug := parseLinearProjectSlug(a.source.ProjectURL); slug != "" {
+		var resp projectResp
+		if err := a.client.query(ctx, projectLookupBySlugQuery, map[string]any{"slugId": slug}, &resp); err == nil {
+			if len(resp.Projects.Nodes) > 0 && strings.TrimSpace(resp.Projects.Nodes[0].ID) != "" {
+				return a.cacheProjectID(resp.Projects.Nodes[0].ID), nil
+			}
+		}
+	}
+
+	// Fall back to connection.project (name or ID).
+	project := strings.TrimSpace(a.source.Connection.Project)
+	if project == "" {
+		return "", fmt.Errorf("linear source %q: set project_url or connection.project", a.source.Name)
+	}
+
+	var resp projectResp
+	if err := a.client.query(ctx, projectLookupByNameQuery, map[string]any{"name": project}, &resp); err == nil {
 		if len(resp.Projects.Nodes) > 0 && strings.TrimSpace(resp.Projects.Nodes[0].ID) != "" {
 			project = resp.Projects.Nodes[0].ID
 		}
 	}
 
+	return a.cacheProjectID(project), nil
+}
+
+func (a *Adapter) cacheProjectID(id string) string {
 	a.mu.Lock()
-	a.projectID = project
+	a.projectID = id
 	a.projectResolved = true
 	a.mu.Unlock()
-	return project, nil
+	return id
+}
+
+// parseLinearProjectSlug extracts the project slug from a Linear project URL.
+// Example: https://linear.app/tannerwj/project/swiftoot-b7f277f40ef3/issues → "swiftoot-b7f277f40ef3"
+func parseLinearProjectSlug(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	// Match /project/<slug> in the URL path.
+	const marker = "/project/"
+	idx := strings.Index(strings.ToLower(raw), marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := raw[idx+len(marker):]
+	// Slug ends at next "/" or end of string.
+	if i := strings.Index(rest, "/"); i >= 0 {
+		rest = rest[:i]
+	}
+	return strings.TrimSpace(rest)
 }
 
 func (a *Adapter) Get(ctx context.Context, issueID string) (domain.Issue, error) {
@@ -320,7 +368,11 @@ func (a *Adapter) AddLifecycleLabel(ctx context.Context, issueID string, label s
 }
 
 func (a *Adapter) RemoveLifecycleLabel(ctx context.Context, issueID string, label string) error {
-	return a.updateLifecycleLabel(ctx, issueID, label, issueRemoveLabelMutation)
+	err := a.updateLifecycleLabel(ctx, issueID, label, issueRemoveLabelMutation)
+	if err != nil && strings.Contains(err.Error(), "Label not on issue") {
+		return nil
+	}
+	return err
 }
 
 func (a *Adapter) UpdateIssueState(ctx context.Context, issueID string, stateName string) error {

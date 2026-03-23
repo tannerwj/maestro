@@ -142,6 +142,9 @@ type SourceSummary struct {
 	DisplayGroup     string
 	Tags             []string
 	Tracker          string
+	ProjectURL       string
+	FilterStates     []string
+	FilterLabels     []string
 	LastPollAt       time.Time
 	LastPollCount    int
 	ClaimedCount     int
@@ -390,6 +393,9 @@ func sourceSummaryForSnapshot(source config.SourceConfig, lastPollAt time.Time, 
 		DisplayGroup:     source.DisplayGroup,
 		Tags:             append([]string(nil), source.Tags...),
 		Tracker:          source.Tracker,
+		ProjectURL:       source.ProjectURL,
+		FilterStates:     append([]string(nil), source.Filter.States...),
+		FilterLabels:     append([]string(nil), source.Filter.Labels...),
 		LastPollAt:       lastPollAt,
 		LastPollCount:    lastPollCount,
 		ClaimedCount:     claimedCount,

@@ -1,0 +1,13 @@
+name: review-claude
+description: Automated code review agent. Reviews PRs, runs tests, verifies builds, and squash-merges passing work.
+instance_name: review-claude
+harness: claude-code
+workspace: git-clone
+prompt: prompt.md
+approval_policy: auto
+max_concurrent: 2
+claude:
+  model: claude-opus-4-6
+  reasoning: high
+context_files:
+  - context.md

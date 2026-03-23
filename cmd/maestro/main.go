@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,6 +43,8 @@ func main() {
 		demoWebCommand(args[1:])
 	case "inspect":
 		inspectCommand(args[1:])
+	case "doctor":
+		doctorCommand(args[1:])
 	case "reset":
 		resetCommand(args[1:])
 	case "cleanup":
@@ -107,7 +112,11 @@ func runCommand(args []string) {
 		fatalf("validate config: %v", err)
 	}
 
-	logger, closeLogs, err := logging.New(cfg.Logging.Level, cfg.Logging.Dir, cfg.Logging.MaxFiles)
+	var logOpts []logging.Option
+	if !noTUI {
+		logOpts = append(logOpts, logging.FileOnly())
+	}
+	logger, closeLogs, err := logging.New(cfg.Logging.Level, cfg.Logging.Dir, cfg.Logging.MaxFiles, logOpts...)
 	if err != nil {
 		fatalf("init logger: %v", err)
 	}
@@ -129,39 +138,56 @@ func runCommand(args []string) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	componentCount := 1
-	errCh := make(chan error, 3)
+	pendingComponents := []string{"runtime"}
+	errCh := make(chan componentResult, 3)
 	go func() {
-		errCh <- runtime.Run(ctx)
+		errCh <- componentResult{name: "runtime", err: runtime.Run(ctx)}
 	}()
 	if bridge != nil {
-		componentCount++
+		pendingComponents = append(pendingComponents, "bridge")
 		go func() {
-			errCh <- bridge.Run(ctx)
+			errCh <- componentResult{name: "bridge", err: bridge.Run(ctx)}
 		}()
 	}
 	if cfg.Server.Enabled {
-		componentCount++
+		pendingComponents = append(pendingComponents, "api")
 		server := api.New(cfg, logger, runtime)
 		go func() {
-			errCh <- server.Run(ctx)
+			errCh <- componentResult{name: "api", err: server.Run(ctx)}
 		}()
 	}
 
 	if noTUI {
-		if err := waitForExit(ctx, errCh, componentCount, logger); err != nil {
+		if err := waitForExit(ctx, errCh, pendingComponents, logger); err != nil {
 			fatalf("run service: %v", err)
 		}
 		return
 	}
 
-	model := tui.NewModel(runtime)
+	shutdownFn := func() error {
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		return waitForExit(shutdownCtx, errCh, pendingComponents, logger)
+	}
+
+	var tuiOpts []tui.ModelOption
+	if cfg.Server.Enabled && cfg.Server.Port > 0 {
+		host := cfg.Server.Host
+		if host == "" {
+			host = "127.0.0.1"
+		}
+		tuiOpts = append(tuiOpts, tui.WithWebURL(fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)))
+	}
+	if cfg.Defaults.PollInterval.Duration > 0 {
+		tuiOpts = append(tuiOpts, tui.WithPollInterval(cfg.Defaults.PollInterval.Duration))
+	} else if len(cfg.Sources) > 0 && cfg.Sources[0].PollInterval.Duration > 0 {
+		tuiOpts = append(tuiOpts, tui.WithPollInterval(cfg.Sources[0].PollInterval.Duration))
+	}
+	tuiOpts = append(tuiOpts, tui.WithShutdown(shutdownFn))
+	model := tui.NewModel(runtime, tuiOpts...)
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fatalf("run tui: %v", err)
-	}
-	cancel()
-	if err := waitForExit(context.Background(), errCh, componentCount, logger); err != nil {
-		fatalf("run service: %v", err)
 	}
 }
 
@@ -179,6 +205,70 @@ func inspectCommand(args []string) {
 		inspectRuns(args[1:])
 	default:
 		fatalf("unknown inspect target %q", args[0])
+	}
+}
+
+func doctorCommand(args []string) {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	var configPath string
+	fs.StringVar(&configPath, "config", "", "path to maestro config")
+	_ = fs.Parse(args)
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fatalf("load config: %v", err)
+	}
+	if err := config.ValidateMVP(cfg); err != nil {
+		fatalf("validate config: %v", err)
+	}
+
+	type binaryCheck struct {
+		Binary string
+		Path   string
+		Err    error
+	}
+
+	required := map[string]string{}
+	for _, agent := range cfg.AgentTypes {
+		switch agent.Harness {
+		case "claude-code":
+			required["claude-code"] = "claude"
+		case "codex":
+			required["codex"] = "codex"
+		}
+	}
+
+	checks := make([]binaryCheck, 0, len(required))
+	for _, binary := range required {
+		path, err := exec.LookPath(binary)
+		checks = append(checks, binaryCheck{
+			Binary: binary,
+			Path:   path,
+			Err:    err,
+		})
+	}
+	sort.Slice(checks, func(i, j int) bool {
+		return checks[i].Binary < checks[j].Binary
+	})
+
+	hasFailure := false
+	fmt.Println("Maestro doctor")
+	fmt.Println()
+	fmt.Println("Config")
+	fmt.Printf("  OK  %s\n", cfg.ConfigPath)
+	fmt.Println()
+	fmt.Println("Harness binaries")
+	for _, check := range checks {
+		if check.Err != nil {
+			hasFailure = true
+			fmt.Printf("  FAIL %s not found in PATH\n", check.Binary)
+			continue
+		}
+		fmt.Printf("  OK  %s -> %s\n", check.Binary, check.Path)
+	}
+
+	if hasFailure {
+		os.Exit(1)
 	}
 }
 
@@ -587,22 +677,45 @@ func printJSON(value any) {
 	fmt.Println(string(raw))
 }
 
-func waitForExit(ctx context.Context, errCh <-chan error, components int, logger *slog.Logger) error {
+type componentResult struct {
+	name string
+	err  error
+}
+
+func waitForExit(ctx context.Context, errCh <-chan componentResult, components []string, logger *slog.Logger) error {
+	pending := make(map[string]struct{}, len(components))
+	for _, name := range components {
+		pending[name] = struct{}{}
+	}
 	doneCh := ctx.Done()
 	var firstErr error
-	for components > 0 {
+	for len(pending) > 0 {
 		select {
-		case err := <-errCh:
-			components--
-			if err != nil && firstErr == nil {
-				firstErr = err
+		case result := <-errCh:
+			delete(pending, result.name)
+			if result.err != nil && firstErr == nil {
+				firstErr = result.err
 			}
 		case <-doneCh:
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				names := sortedComponentNames(pending)
+				logger.Warn("shutdown timed out", "pending", names)
+				return fmt.Errorf("timed out waiting for %s", strings.Join(names, ", "))
+			}
 			logger.Info("shutdown requested")
 			doneCh = nil
 		}
 	}
 	return firstErr
+}
+
+func sortedComponentNames(pending map[string]struct{}) []string {
+	names := make([]string, 0, len(pending))
+	for name := range pending {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func fatalf(format string, args ...any) {

@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -94,4 +96,25 @@ func (s *Service) clearRunOutput(runID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.runOutputs, runID)
+}
+
+func (s *Service) saveRunLogs(runID string, stdout []byte, stderr []byte) {
+	if len(stdout) == 0 && len(stderr) == 0 {
+		return
+	}
+	dir := filepath.Join(s.stateStore.Dir(), "runs", runID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		s.logger.Warn("save run logs: mkdir failed", "run", runID, "error", err)
+		return
+	}
+	if len(stdout) > 0 {
+		if err := os.WriteFile(filepath.Join(dir, "stdout.log"), stdout, 0o644); err != nil {
+			s.logger.Warn("save run logs: write stdout failed", "run", runID, "error", err)
+		}
+	}
+	if len(stderr) > 0 {
+		if err := os.WriteFile(filepath.Join(dir, "stderr.log"), stderr, 0o644); err != nil {
+			s.logger.Warn("save run logs: write stderr failed", "run", runID, "error", err)
+		}
+	}
 }

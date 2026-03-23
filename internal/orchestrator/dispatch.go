@@ -181,8 +181,10 @@ func (s *Service) prepareAndStart(ctx context.Context, run *domain.AgentRun) err
 	s.initRunOutput(run.ID)
 	defer s.clearRunOutput(run.ID)
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
+	defer func() {
+		s.saveRunLogs(run.ID, stdout.Bytes(), stderr.Bytes())
+	}()
 	stdoutWriter := &runOutputWriter{
 		target:  &stdout,
 		onWrite: func() { s.markRunActivity(run.ID) },

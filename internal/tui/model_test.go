@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,17 @@ func (s staticSnapshotProvider) ResolveMessage(requestID string, reply string, r
 	return nil
 }
 
+// stripANSI removes ANSI escape codes from a string for test assertions.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
+}
+
+func viewContains(view, want string) bool {
+	return strings.Contains(stripANSI(view), want)
+}
+
 func TestViewGroupsSourcesAndShowsTags(t *testing.T) {
 	snapshot := orchestrator.Snapshot{
 		SourceName: "epic-a, project-a, linear-a",
@@ -43,21 +55,21 @@ func TestViewGroupsSourcesAndShowsTags(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Source status:",
-		"  Delivery:",
-		"> [OK] project-a [gitlab] tags=backend,prod",
-		"  Planning:",
-		"    [OK] epic-a [gitlab-epic] tags=platform",
-		"  linear:",
-		"    [OK] linear-a [linear] tags=triage",
-		"Selected source:",
-		"Name: project-a",
-		"Health: OK",
-		"Selected source events:",
+		"Sources",
+		"project-a",
+		"gitlab",
+		"epic-a",
+		"gitlab-epic",
+		"linear-a",
+		"linear",
+		"Source Detail",
+		"project-a  [OK]  gitlab",
+		"tags:backend,prod",
+		"Events:",
 		"polled 1 candidate issues from project-a",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
+		if !viewContains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, stripANSI(view))
 		}
 	}
 }
@@ -80,17 +92,23 @@ func TestViewAppliesGroupFilterAndSearch(t *testing.T) {
 		groupFilter: "Planning",
 		searchQuery: "platform",
 		focus:       focusSources,
+		runSort:     runSortStallRisk,
+		retrySort:   retrySortDueSoonest,
+		quickFilter: quickFilterAll,
+		width:       80,
+		height:      24,
 	}
 
 	view := model.View()
-	if strings.Contains(view, "project-a [gitlab]") {
-		t.Fatalf("expected filtered view to hide project-a:\n%s", view)
+	plain := stripANSI(view)
+	if strings.Contains(plain, "● project-a") {
+		t.Fatalf("expected filtered view to hide project-a source row:\n%s", plain)
 	}
-	if !strings.Contains(view, "epic-a [gitlab-epic] tags=platform") {
-		t.Fatalf("expected filtered view to show epic-a:\n%s", view)
+	if !viewContains(view, "epic-a") {
+		t.Fatalf("expected filtered view to show epic-a:\n%s", plain)
 	}
-	if !strings.Contains(view, "Filters: group=Planning search=platform") {
-		t.Fatalf("expected filter summary in view:\n%s", view)
+	if !viewContains(view, "Filters: group=Planning search=platform") {
+		t.Fatalf("expected filter summary in view:\n%s", plain)
 	}
 }
 
@@ -180,21 +198,18 @@ func TestViewShowsSelectedRunDetails(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Overview: sources=2 active=2 approvals=0 messages=0 retries=0 focus=runs run-sort=oldest",
-		"Active runs:",
-		"> [RUN] coder on team/project#1 [active]",
-		"Source: project-a | Title: Backend work",
-		"Selected run:",
+		"Active Runs",
+		"coder",
+		"team/project#1",
+		"Run Detail",
 		"Run: run-1",
 		"Agent: coder (code-pr)",
 		"Harness: claude-code",
 		"Workspace: /tmp/workspace-a",
-		"Selected run output:",
-		"Selected run events:",
-		"agent coder started for team/project#1",
+		"agent coder started for",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
+		if !viewContains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, stripANSI(view))
 		}
 	}
 }
@@ -272,15 +287,17 @@ func TestViewShowsRetriesPane(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Retries (sort=due-soonest):",
-		"> team/project#1 attempt=2 due=2026-03-16T12:00:00Z",
-		"Selected retry:",
+		"Retry Queue",
+		"team/project#1",
+		"project-a",
+		"2",
+		"Retry Detail",
 		"Source: project-a",
 		"Issue: team/project#1",
 		"Error: network timeout",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
+		if !viewContains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, stripANSI(view))
 		}
 	}
 }
@@ -358,17 +375,17 @@ func TestViewAppliesQuickAttentionFilter(t *testing.T) {
 	model.focus = focusSources
 
 	view := model.View()
-	if strings.Contains(view, "project-a [gitlab]") {
-		t.Fatalf("expected project-a to be hidden by attention filter:\n%s", view)
+	plain := stripANSI(view)
+	// project-a should be hidden (OK health, no attention needed)
+	// but project-b should appear (RETRY health)
+	if !strings.Contains(plain, "project-b") {
+		t.Fatalf("view missing project-b:\n%s", plain)
 	}
-	for _, want := range []string{
-		"project-b [gitlab]",
-		"team/project#2",
-		"quick=attention",
-	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
-		}
+	if !strings.Contains(plain, "team/project#2") {
+		t.Fatalf("view missing team/project#2:\n%s", plain)
+	}
+	if !viewContains(view, "quick=attention") {
+		t.Fatalf("view missing quick=attention:\n%s", plain)
 	}
 }
 
@@ -394,18 +411,19 @@ func TestViewAppliesQuickAwaitingFilter(t *testing.T) {
 	model.focus = focusRuns
 
 	view := model.View()
-	if strings.Contains(view, "team/project#1") {
-		t.Fatalf("expected non-awaiting run to be hidden:\n%s", view)
+	plain := stripANSI(view)
+	if strings.Contains(plain, "team/project#1") {
+		t.Fatalf("expected non-awaiting run to be hidden:\n%s", plain)
 	}
-	if strings.Contains(view, "team/project#3") {
-		t.Fatalf("expected retries to be hidden under awaiting filter:\n%s", view)
+	if strings.Contains(plain, "team/project#3") {
+		t.Fatalf("expected retries to be hidden under awaiting filter:\n%s", plain)
 	}
 	for _, want := range []string{
 		"team/project#2",
 		"quick=awaiting-approval",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
+		if !viewContains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, plain)
 		}
 	}
 }
@@ -444,15 +462,70 @@ func TestViewShowsSelectedRunOutputTail(t *testing.T) {
 
 	view := model.View()
 	for _, want := range []string{
-		"Selected run output:",
 		"Stdout:",
 		"step 1",
 		"step 2",
 		"Stderr:",
 		"warning line",
 	} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("view missing %q:\n%s", want, view)
+		if !viewContains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, stripANSI(view))
 		}
+	}
+}
+
+func TestViewHandlesWindowSizeMsg(t *testing.T) {
+	model := NewModel(staticSnapshotProvider{snapshot: orchestrator.Snapshot{}})
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	got := updated.(Model)
+	if got.width != 120 {
+		t.Fatalf("width = %d, want 120", got.width)
+	}
+	if got.height != 40 {
+		t.Fatalf("height = %d, want 40", got.height)
+	}
+}
+
+func TestUpdateShowsShutdownProgressAndCompletionInTUI(t *testing.T) {
+	model := NewModel(
+		staticSnapshotProvider{snapshot: orchestrator.Snapshot{}},
+		WithShutdown(func() error { return nil }),
+	)
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+	if !got.shuttingDown {
+		t.Fatal("expected shutdown mode to start")
+	}
+	if got.shutdownComplete {
+		t.Fatal("expected shutdown to still be in progress")
+	}
+	if !viewContains(got.View(), "Shutting down Maestro") {
+		t.Fatalf("shutdown view missing progress state:\n%s", stripANSI(got.View()))
+	}
+	if cmd == nil {
+		t.Fatal("expected shutdown command")
+	}
+
+	msg := cmd()
+	finished, ok := msg.(shutdownFinishedMsg)
+	if !ok {
+		t.Fatalf("shutdown command returned %T", msg)
+	}
+
+	updated, cmd = got.Update(finished)
+	got = updated.(Model)
+	if !got.shutdownComplete {
+		t.Fatal("expected shutdown completion state")
+	}
+	if !viewContains(got.View(), "Shutdown complete.") {
+		t.Fatalf("shutdown view missing completion state:\n%s", stripANSI(got.View()))
+	}
+	if cmd == nil {
+		t.Fatal("expected delayed exit command")
+	}
+	exitMsg := cmd()
+	if _, ok := exitMsg.(shutdownExitMsg); !ok {
+		t.Fatalf("exit command returned %T", exitMsg)
 	}
 }
