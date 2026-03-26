@@ -184,10 +184,17 @@ func runCommand(args []string) {
 	} else if len(cfg.Sources) > 0 && cfg.Sources[0].PollInterval.Duration > 0 {
 		tuiOpts = append(tuiOpts, tui.WithPollInterval(cfg.Sources[0].PollInterval.Duration))
 	}
-	tuiOpts = append(tuiOpts, tui.WithShutdown(shutdownFn))
+	var shutdownErr error
+	tuiOpts = append(tuiOpts, tui.WithShutdown(func() error {
+		shutdownErr = shutdownFn()
+		return shutdownErr
+	}))
 	model := tui.NewModel(runtime, tuiOpts...)
 	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
 		fatalf("run tui: %v", err)
+	}
+	if shutdownErr != nil {
+		fatalf("run service: %v", shutdownErr)
 	}
 }
 
