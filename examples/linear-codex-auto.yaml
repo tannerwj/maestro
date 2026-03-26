@@ -12,7 +12,7 @@ sources:
   - name: linear-poc
     tracker: linear
     connection:
-      token_env: MAESTRO_LINEAR_TOKEN
+      token_env: $MAESTRO_LINEAR_TOKEN
       project: your-linear-project-name-or-id
     repo: /absolute/path/or/repo-url.git
     filter:

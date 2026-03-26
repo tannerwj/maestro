@@ -426,7 +426,7 @@ func NewDemoRuntime() *DemoRuntime {
 				IssueIdentifier: "platform/app#41",
 				AgentName:       "platform-coder",
 				ToolName:        "bash",
-				ApprovalPolicy:  "destructive-only",
+				ApprovalPolicy:  "manual",
 				Decision:        "approve",
 				Reason:          "migration cleanup is expected in this run",
 				RequestedAt:     now.Add(-32 * time.Minute),

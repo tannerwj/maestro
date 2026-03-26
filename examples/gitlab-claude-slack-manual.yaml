@@ -13,7 +13,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: https://gitlab.com
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       project: your-group/your-project
     filter:
       labels: [agent:ready]
@@ -33,9 +33,9 @@ channels:
     kind: slack
     config:
       mode: dm
-      token_env: MAESTRO_SLACK_BOT_TOKEN
-      app_token_env: MAESTRO_SLACK_APP_TOKEN
-      user_id_env: MAESTRO_SLACK_USER_ID
+      token_env: $MAESTRO_SLACK_BOT_TOKEN
+      app_token_env: $MAESTRO_SLACK_APP_TOKEN
+      user_id_env: $MAESTRO_SLACK_USER_ID
 
 workspace:
   root: ~/.local/share/maestro/workspaces

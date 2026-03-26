@@ -242,7 +242,7 @@ sources:
   - name: linear-smoke
     tracker: linear
     connection:
-      token_env: MAESTRO_LINEAR_TOKEN
+      token_env: $MAESTRO_LINEAR_TOKEN
       project: ${MAESTRO_LINEAR_PROJECT}
     repo: ${repo_bare}
     filter:

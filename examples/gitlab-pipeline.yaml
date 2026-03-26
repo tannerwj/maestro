@@ -1,0 +1,97 @@
+# Workflow chaining example: implement → review → merge
+#
+# Two sources form a pipeline:
+# 1. "implement" picks up issues labeled "todo" or "rework", dispatches dev-codex
+# 2. "review" picks up issues labeled "needs-review", dispatches review-claude
+#
+# On failure, issues get labeled "rework" and cycle back to the implement source.
+
+defaults:
+  poll_interval: 10s
+  max_concurrent_global: 5
+  stall_timeout: 30m
+  label_prefix: maestro
+
+agent_packs_dir: ../agents
+
+user:
+  name: "Your Name"
+  gitlab_username: "you"
+
+sources:
+  # Phase 1: implement
+  - name: implement
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.com
+      token_env: $GITLAB_TOKEN
+      project: "your-group/your-project"
+    repo: https://gitlab.com/your-group/your-project.git
+    filter:
+      labels: [todo]
+    agent_type: dev-codex
+    poll_interval: 10s
+    max_attempts: 3
+    retry_base: 30s
+    max_retry_backoff: 10m
+    on_dispatch:
+      add_labels: [maestro:active, in-progress]
+      remove_labels: [todo]
+    on_complete:
+      add_labels: [needs-review]
+      remove_labels: [in-progress]
+    on_failure:
+      add_labels: [rework]
+      remove_labels: [in-progress]
+
+  # Phase 2: review + merge
+  - name: review
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.com
+      token_env: $GITLAB_TOKEN
+      project: "your-group/your-project"
+    repo: https://gitlab.com/your-group/your-project.git
+    filter:
+      labels: [needs-review]
+    agent_type: review-claude
+    poll_interval: 10s
+    max_attempts: 2
+    retry_base: 30s
+    on_complete:
+      add_labels: [maestro:done]
+      remove_labels: [needs-review]
+    on_failure:
+      add_labels: [rework]
+      remove_labels: [needs-review]
+
+agent_types:
+  - name: dev-codex
+    agent_pack: dev-codex
+    max_concurrent: 5
+    codex:
+      reasoning: high
+      max_turns: 20
+
+  - name: review-claude
+    agent_pack: review-claude
+    max_concurrent: 2
+
+workspace:
+  root: ./var/workspaces
+
+state:
+  dir: ./var/state
+  retry_base: 30s
+  max_retry_backoff: 10m
+  max_attempts: 3
+
+server:
+  enabled: true
+  host: 127.0.0.1
+  port: 7777
+
+logging:
+  level: info
+  dir: ./var/logs
+  max_files: 20

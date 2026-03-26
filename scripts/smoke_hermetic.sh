@@ -36,7 +36,7 @@ max_concurrent: 1
 codex:
   reasoning: low
   max_turns: 2
-  thread_sandbox: workspace-write
+  thread_sandbox: workspaceWrite
   extra_args: ["--pack-extra"]
 context_files:
   - context/rules.md
@@ -424,7 +424,6 @@ codex_defaults:
   model: gpt-5.4
   reasoning: medium
   max_turns: 1
-  thread_sandbox: workspace-write
   extra_args: ["--default-extra"]
 
 claude_defaults:
@@ -439,7 +438,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: http://127.0.0.1:${tracker_port}/gitlab
-      token_env: SMOKE_GITLAB_TOKEN
+      token_env: $SMOKE_GITLAB_TOKEN
       project: team/project
     filter:
       labels: [orch:coding]
@@ -450,7 +449,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: http://127.0.0.1:${tracker_port}/gitlab
-      token_env: SMOKE_GITLAB_TOKEN
+      token_env: $SMOKE_GITLAB_TOKEN
       project: team/project
     filter:
       labels: [orch:review]
@@ -464,7 +463,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: http://127.0.0.1:${tracker_port}/gitlab
-      token_env: SMOKE_GITLAB_TOKEN
+      token_env: $SMOKE_GITLAB_TOKEN
       project: team/project
     filter:
       labels: [repo:ready]
@@ -478,7 +477,7 @@ sources:
     tracker: gitlab-epic
     connection:
       base_url: http://127.0.0.1:${tracker_port}/gitlab
-      token_env: SMOKE_GITLAB_TOKEN
+      token_env: $SMOKE_GITLAB_TOKEN
       group: team
     epic_filter:
       labels: [epic:bucket]
@@ -494,7 +493,7 @@ sources:
     tracker: linear
     connection:
       base_url: http://127.0.0.1:${tracker_port}/linear/graphql
-      token_env: SMOKE_LINEAR_TOKEN
+      token_env: $SMOKE_LINEAR_TOKEN
       project: Smoke Project
     repo: ${repo_bare}
     filter:
@@ -643,7 +642,7 @@ def events_for_cwd(cwd_suffix, event_type):
 
 stage1_threads = events_for_cwd("team_project_101", "thread_start")
 require(len(stage1_threads) == 1, f"stage1 threads={stage1_threads}")
-require(stage1_threads[0]["sandbox"] == "workspace-write", stage1_threads[0])
+require(stage1_threads[0]["sandbox"] == "workspaceWrite", stage1_threads[0])
 stage1_turns = events_for_cwd("team_project_101", "turn_start")
 require(len(stage1_turns) == 2, f"stage1 turns={stage1_turns}")
 require("AgentUpper=STAGE-CODEX" in stage1_turns[0]["prompt"], stage1_turns[0]["prompt"])
@@ -661,7 +660,7 @@ require("repo-pack-context" in repo_turns[0]["prompt"], repo_turns[0]["prompt"])
 
 linear_threads = events_for_cwd("SMK-1", "thread_start")
 require(len(linear_threads) == 1, f"linear threads={linear_threads}")
-require(linear_threads[0]["sandbox"] == "danger-full-access", linear_threads[0])
+require(linear_threads[0]["sandbox"] == "dangerFullAccess", linear_threads[0])
 linear_turns = events_for_cwd("SMK-1", "turn_start")
 require(len(linear_turns) == 1, f"linear turns={linear_turns}")
 require(linear_turns[0]["sandbox_policy"] == {"type": "dangerFullAccess"}, linear_turns[0])

@@ -676,8 +676,8 @@ func marshalRaw(v any) (json.RawMessage, error) {
 
 func codexApprovalPolicy(policy string) string {
 	switch policy {
-	case "manual", "destructive-only":
-		return "on-request"
+	case "manual":
+		return "onRequest"
 	default:
 		return "never"
 	}
@@ -685,16 +685,16 @@ func codexApprovalPolicy(policy string) string {
 
 func codexSandboxMode(policy string) string {
 	switch policy {
-	case "manual", "destructive-only":
-		return "workspace-write"
+	case "manual":
+		return "workspaceWrite"
 	default:
-		return "danger-full-access"
+		return "dangerFullAccess"
 	}
 }
 
 func codexSandboxPolicy(policy string, cwd string) map[string]any {
 	switch policy {
-	case "manual", "destructive-only":
+	case "manual":
 		return map[string]any{
 			"type":          "workspaceWrite",
 			"writableRoots": []string{cwd},
@@ -727,11 +727,11 @@ func buildApprovalRequest(runID string, approvalPolicy string, rpcID int64, meth
 		}
 		approval.ToolName = "command"
 		approval.ToolInput = strings.TrimSpace(payload.Command + "\n" + payload.Reason)
-		approved, err := marshalRaw(map[string]any{"decision": "approved"})
+		approved, err := marshalRaw(map[string]any{"decision": "accept"})
 		if err != nil {
 			return "", rpcEnvelope{}, rpcEnvelope{}, harness.ApprovalRequest{}, err
 		}
-		rejected, err := marshalRaw(map[string]any{"decision": "denied"})
+		rejected, err := marshalRaw(map[string]any{"decision": "decline"})
 		if err != nil {
 			return "", rpcEnvelope{}, rpcEnvelope{}, harness.ApprovalRequest{}, err
 		}

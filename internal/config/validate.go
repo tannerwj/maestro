@@ -88,8 +88,8 @@ func ValidateMVP(cfg *Config) error {
 		if hasRepoPack && agent.Workspace != "git-clone" {
 			return fmt.Errorf("agent %q requires workspace git-clone for repo pack %q", agent.Name, repoPackPath)
 		}
-		if !slices.Contains([]string{"auto", "manual", "destructive-only"}, agent.ApprovalPolicy) {
-			return fmt.Errorf("agent %q requires approval_policy to be one of auto, manual, destructive-only", agent.Name)
+		if !slices.Contains([]string{"auto", "manual"}, agent.ApprovalPolicy) {
+			return fmt.Errorf("agent %q requires approval_policy to be one of auto, manual", agent.Name)
 		}
 		if agent.MaxConcurrent < 1 {
 			return fmt.Errorf("agent %q max_concurrent must be at least 1", agent.Name)
@@ -310,4 +310,58 @@ func validateLifecycleTransition(name string, transition *LifecycleTransition, r
 		}
 	}
 	return nil
+}
+
+// DiagnoseConfig returns warnings for configs that are valid but may cause
+// unexpected behavior, such as lifecycle transitions that could re-dispatch
+// the same issue to the same source in an infinite loop.
+func DiagnoseConfig(cfg *Config) []string {
+	var warnings []string
+	for _, source := range cfg.Sources {
+		prefix := source.LabelPrefix
+		if prefix == "" {
+			prefix = cfg.Defaults.LabelPrefix
+		}
+		if prefix == "" {
+			prefix = "maestro"
+		}
+
+		onComplete := ResolveLifecycleTransition(cfg.Defaults.OnComplete, source.OnComplete)
+		if transitionMayLoop(onComplete, source, prefix) {
+			warnings = append(warnings, fmt.Sprintf(
+				"source %q on_complete adds no routing label and no state change — "+
+					"completed issues may be re-dispatched by the same source",
+				source.Name))
+		}
+
+		onFailure := ResolveLifecycleTransition(cfg.Defaults.OnFailure, source.OnFailure)
+		if transitionMayLoop(onFailure, source, prefix) {
+			warnings = append(warnings, fmt.Sprintf(
+				"source %q on_failure adds no routing label and no state change — "+
+					"failed issues may be re-dispatched by the same source",
+				source.Name))
+		}
+	}
+	return warnings
+}
+
+// transitionMayLoop returns true if a lifecycle transition would leave the
+// issue eligible for re-dispatch by the same source. This happens when:
+//   - the transition is explicitly configured (overrides defaults)
+//   - it adds no labels (no routing label to move the issue elsewhere)
+//   - it has no state change (issue stays in a filter-matching state)
+//
+// When the transition is nil (defaults apply), the framework automatically
+// adds {prefix}:done or {prefix}:failed which blocks re-intake.
+func transitionMayLoop(transition *LifecycleTransition, source SourceConfig, prefix string) bool {
+	if transition == nil {
+		return false // defaults add a blocking lifecycle label
+	}
+	if transition.State != "" {
+		return false // state change likely moves issue out of filter
+	}
+	if len(transition.AddLabels) > 0 {
+		return false // adds a routing label for another source
+	}
+	return true
 }

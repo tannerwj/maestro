@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.24+
+- Go 1.26+
 - `git`
 - One authenticated harness:
   - `claude`
@@ -35,7 +35,7 @@ export MAESTRO_GITLAB_TOKEN=...
 5. Run:
 
 ```bash
-make run CONFIG=demo/gitlab-claude-auto/maestro.yaml
+make run CONFIG=examples/gitlab-claude-auto.yaml
 ```
 
 ## Minimal GitLab Epic Setup
@@ -86,10 +86,10 @@ Then open [http://127.0.0.1:8742](http://127.0.0.1:8742).
 export MAESTRO_LINEAR_TOKEN=...
 ```
 
-3. Copy [examples/linear-claude-auto.yaml](../examples/linear-claude-auto.yaml) and update:
+3. Copy [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) and update:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
-   - `sources[0].connection.project` with the exact project name or GraphQL project ID
+   - `sources[0].connection.project` with the exact project name or GraphQL project ID, or use `sources[0].project_url` with a Linear project URL instead
    - `sources[0].repo`
    - `sources[0].filter`
    - `defaults.stall_timeout` or `agent_types[0].stall_timeout` if you want a different inactivity timeout
@@ -228,10 +228,9 @@ codex_defaults:
   model: gpt-5.4
   reasoning: high
   max_turns: 20
-  thread_sandbox: workspace-write
 
 claude_defaults:
-  model: opus-4.6
+  model: claude-opus-4-6
   reasoning: high
   max_turns: 1
 ```
@@ -273,10 +272,13 @@ make release VERSION=v0.1.0
 Useful local operator commands after install:
 
 ```bash
+maestro doctor --config /path/to/maestro.yaml
 maestro inspect runs --config /path/to/maestro.yaml
 maestro reset issue --config /path/to/maestro.yaml group/project#123
 maestro cleanup workspaces --config /path/to/maestro.yaml --dry-run
 ```
+
+`maestro doctor` validates the config and checks that all required harness binaries (`claude`, `codex`) are available in `PATH`.
 
 `inspect runs` and `inspect state` include per-source health summaries so you can tell at a glance which source is active, retrying, degraded, or idle.
 
@@ -322,9 +324,9 @@ channels:
     kind: slack
     config:
       mode: dm
-      token_env: MAESTRO_SLACK_BOT_TOKEN
-      app_token_env: MAESTRO_SLACK_APP_TOKEN
-      user_id_env: MAESTRO_SLACK_USER_ID
+      token_env: $MAESTRO_SLACK_BOT_TOKEN
+      app_token_env: $MAESTRO_SLACK_APP_TOKEN
+      user_id_env: $MAESTRO_SLACK_USER_ID
 ```
 
 If you want Slack to ask a plain question and wait for a typed reply instead of showing `Approve` / `Reject`, enable:
@@ -408,8 +410,15 @@ That lets you:
 Pack examples live under:
 
 - [agents/code-pr/agent.yaml](../agents/code-pr/agent.yaml)
+- [agents/dev-claude/agent.yaml](../agents/dev-claude/agent.yaml)
+- [agents/dev-codex/agent.yaml](../agents/dev-codex/agent.yaml)
 - [agents/repo-maintainer/agent.yaml](../agents/repo-maintainer/agent.yaml)
+- [agents/review-claude/agent.yaml](../agents/review-claude/agent.yaml)
 - [agents/triage/agent.yaml](../agents/triage/agent.yaml)
+- [agents/access-reviewer/agent.yaml](../agents/access-reviewer/agent.yaml)
+- [agents/query-optimizer/agent.yaml](../agents/query-optimizer/agent.yaml)
+- [agents/vuln-triage/agent.yaml](../agents/vuln-triage/agent.yaml)
+- [agents/demo-app-bootstrap/agent.yaml](../agents/demo-app-bootstrap/agent.yaml)
 
 ## Hooks And Stall Detection
 

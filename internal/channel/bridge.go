@@ -965,10 +965,10 @@ func loadSlackChannelConfig(channel config.ChannelConfig) (slackChannelConfig, e
 	}
 	cfg := slackChannelConfig{
 		Mode:      mode,
-		BotToken:  os.Getenv(channelConfigValue(channel.Config, "token_env")),
-		AppToken:  os.Getenv(channelConfigValue(channel.Config, "app_token_env")),
-		UserID:    firstNonEmpty(channelConfigValue(channel.Config, "user_id"), os.Getenv(channelConfigValue(channel.Config, "user_id_env"))),
-		ChannelID: firstNonEmpty(channelConfigValue(channel.Config, "channel_id"), os.Getenv(channelConfigValue(channel.Config, "channel_id_env"))),
+		BotToken:  os.Getenv(stripEnvPrefix(channelConfigValue(channel.Config, "token_env"))),
+		AppToken:  os.Getenv(stripEnvPrefix(channelConfigValue(channel.Config, "app_token_env"))),
+		UserID:    firstNonEmpty(channelConfigValue(channel.Config, "user_id"), os.Getenv(stripEnvPrefix(channelConfigValue(channel.Config, "user_id_env")))),
+		ChannelID: firstNonEmpty(channelConfigValue(channel.Config, "channel_id"), os.Getenv(stripEnvPrefix(channelConfigValue(channel.Config, "channel_id_env")))),
 	}
 	if strings.TrimSpace(cfg.BotToken) == "" {
 		return slackChannelConfig{}, fmt.Errorf("missing slack bot token")
@@ -1004,6 +1004,12 @@ func channelConfigValue(values map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(value)
+}
+
+// stripEnvPrefix strips a leading "$" from an env var name so that both
+// "SLACK_BOT_TOKEN" and "$SLACK_BOT_TOKEN" are accepted.
+func stripEnvPrefix(name string) string {
+	return strings.TrimPrefix(name, "$")
 }
 
 func firstNonEmpty(values ...string) string {

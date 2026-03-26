@@ -52,7 +52,7 @@ env:
 
 # Harness-specific config (only the matching harness block is used)
 claude:
-  model: opus-4.6
+  model: claude-opus-4-6
   reasoning: high
   max_turns: 1
   extra_args: ["--verbose"]
@@ -61,7 +61,7 @@ codex:
   model: gpt-5.4
   reasoning: high
   max_turns: 20
-  thread_sandbox: workspace-write
+  # thread_sandbox: workspaceWrite  # optional: overrides approval_policy-derived sandbox
 ```
 
 Optional pack directories:
@@ -85,10 +85,9 @@ codex_defaults:
   model: gpt-5.4
   reasoning: high
   max_turns: 20
-  thread_sandbox: workspace-write
 
 claude_defaults:
-  model: opus-4.6
+  model: claude-opus-4-6
   reasoning: high
   max_turns: 1
 
@@ -205,6 +204,7 @@ Prompt files are Go text templates. The runtime passes:
 - `.Source`
 - `.Attempt`
 - `.AgentName`
+- `.OperatorInstruction`
 
 Useful `.Agent` fields now include:
 
@@ -260,15 +260,23 @@ This is still valuable because it gives you one place to encode:
 The repo now ships with:
 
 - [agents/code-pr/agent.yaml](../agents/code-pr/agent.yaml)
-- [agents/dev-codex/agent.yaml](../agents/dev-codex/agent.yaml) — full Symphony-style Codex workflow
+- [agents/dev-claude/agent.yaml](../agents/dev-claude/agent.yaml) — general-purpose Claude Code implementation agent
+- [agents/dev-codex/agent.yaml](../agents/dev-codex/agent.yaml) — general-purpose Codex implementation agent
+- [agents/review-claude/agent.yaml](../agents/review-claude/agent.yaml) — automated code review + squash-merge agent
 - [agents/repo-maintainer/agent.yaml](../agents/repo-maintainer/agent.yaml)
 - [agents/triage/agent.yaml](../agents/triage/agent.yaml)
+- [agents/access-reviewer/agent.yaml](../agents/access-reviewer/agent.yaml) — IAM access review and compliance
+- [agents/query-optimizer/agent.yaml](../agents/query-optimizer/agent.yaml) — multi-engine query optimization
+- [agents/vuln-triage/agent.yaml](../agents/vuln-triage/agent.yaml) — vulnerability triage and remediation
+- [agents/demo-app-bootstrap/agent.yaml](../agents/demo-app-bootstrap/agent.yaml) — new app scaffolding
+
+`dev-claude` and `dev-codex` both use a 6-phase prompt structure: Orient, Plan, Implement, Validate, Publish, Complete. Each phase has explicit gates and guardrails for unattended execution. Retry attempts resume from the existing workspace state rather than starting fresh.
+
+`review-claude` is designed for workflow chaining. A coding source dispatches `dev-codex` or `dev-claude` to implement the work, and on completion the lifecycle labels route the issue to a review source that dispatches `review-claude`. The review agent verifies tests pass, reviews the diff, and squash-merges passing work. Failing work gets routed back with actionable review comments.
 
 Example configs:
 
 - [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml)
-- [examples/gitlab-repo-maintainer.yaml](../examples/gitlab-repo-maintainer.yaml)
-- [examples/linear-triage.yaml](../examples/linear-triage.yaml)
 
 ## Making Your Own Pack
 

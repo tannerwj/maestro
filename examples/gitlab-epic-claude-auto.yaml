@@ -14,7 +14,7 @@ sources:
     tracker: gitlab-epic
     connection:
       base_url: https://gitlab.com
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       group: your-group-or-subgroup
     repo: https://gitlab.com/your-group/your-project.git
     epic_filter:

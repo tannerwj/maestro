@@ -93,7 +93,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: ${MAESTRO_GITLAB_BASE_URL}
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       project: ${MAESTRO_GITLAB_PROJECT}
     filter:
       labels: [${MAESTRO_GITLAB_PROJECT_LABEL}]
@@ -105,7 +105,7 @@ $(if [[ -n "${MAESTRO_GITLAB_USERNAME}" ]]; then printf '      assignee: %s\n' "
     tracker: gitlab-epic
     connection:
       base_url: ${MAESTRO_GITLAB_BASE_URL}
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       group: ${MAESTRO_GITLAB_EPIC_GROUP}
     repo: ${MAESTRO_GITLAB_EPIC_REPO}
     epic_filter:
@@ -119,7 +119,7 @@ $(if [[ -n "${MAESTRO_GITLAB_USERNAME}" ]]; then printf '      assignee: %s\n' "
   - name: linear
     tracker: linear
     connection:
-      token_env: MAESTRO_LINEAR_TOKEN
+      token_env: $MAESTRO_LINEAR_TOKEN
       project: ${MAESTRO_LINEAR_PROJECT}
     repo: ${MAESTRO_LINEAR_REPO}
     filter:

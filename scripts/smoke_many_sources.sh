@@ -300,19 +300,19 @@ source_defaults:
   gitlab:
     connection:
       base_url: ${MAESTRO_GITLAB_BASE_URL}
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       project: ${MAESTRO_GITLAB_PROJECT}
     poll_interval: 2s
   gitlab_epic:
     connection:
       base_url: ${MAESTRO_GITLAB_BASE_URL}
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       group: ${MAESTRO_GITLAB_EPIC_GROUP}
     repo: ${MAESTRO_GITLAB_EPIC_REPO}
     poll_interval: 2s
   linear:
     connection:
-      token_env: MAESTRO_LINEAR_TOKEN
+      token_env: $MAESTRO_LINEAR_TOKEN
       project: ${MAESTRO_LINEAR_PROJECT}
     repo: ${repo_bare}
     poll_interval: 2s

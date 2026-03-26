@@ -346,7 +346,7 @@ func resolveEnv(cfg *Config) error {
 		resolveFilterAssignee(cfg, &cfg.Sources[i].EpicFilter, cfg.Sources[i].Tracker)
 		resolveFilterAssignee(cfg, &cfg.Sources[i].IssueFilter, cfg.Sources[i].Tracker)
 
-		tokenEnv := strings.TrimSpace(cfg.Sources[i].Connection.TokenEnv)
+		tokenEnv := stripEnvPrefix(strings.TrimSpace(cfg.Sources[i].Connection.TokenEnv))
 		if tokenEnv == "" {
 			continue
 		}
@@ -358,6 +358,12 @@ func resolveEnv(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// stripEnvPrefix strips a leading "$" from an env var name so that both
+// "GITLAB_TOKEN" and "$GITLAB_TOKEN" are accepted in config fields.
+func stripEnvPrefix(name string) string {
+	return strings.TrimPrefix(name, "$")
 }
 
 func resolveFilterAssignee(cfg *Config, filter *FilterConfig, tracker string) {

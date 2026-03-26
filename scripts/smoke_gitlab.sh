@@ -116,7 +116,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: ${MAESTRO_GITLAB_BASE_URL}
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       project: ${MAESTRO_GITLAB_PROJECT}
     filter:
       labels: [${issue_label}]

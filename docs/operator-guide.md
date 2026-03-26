@@ -61,21 +61,45 @@ The TUI now shows:
 - a `Selected retry` detail pane with source, issue, attempt, due time, and error
 - a selectable approval list plus detailed approval pane
 
+## Workspace Reuse
+
+Workspaces are preserved across retries instead of being re-cloned. When `PrepareClone` runs, it
+checks whether the workspace already contains a `.git` directory:
+
+- **Healthy repo**: fetches all remotes and checks out the branch. No re-clone.
+- **Corrupt repo** (e.g., `git rev-parse --git-dir` fails): removes and re-clones.
+- **Transient failure** (fetch or checkout fails, but repo is healthy): preserves the workspace and
+  returns an error. This avoids destroying local work on a temporary network or auth issue.
+
+This means retries resume from the prior workspace state, which is important for the 6-phase agent
+prompts that check `git log` and `git status` to determine whether prior work exists.
+
+## Run Log Persistence
+
+After each run completes (success or failure), agent stdout and stderr are saved to:
+
+- `{state.dir}/runs/{run-id}/stdout.log`
+- `{state.dir}/runs/{run-id}/stderr.log`
+
+These persist across restarts and are useful for post-mortem debugging. Only runs that produced output
+generate log files.
+
 ## State And Logs
 
 Important directories:
 
 - `workspace.root`: checked out workspaces
-- `state.dir`: persisted `runs.json`
+- `state.dir`: persisted `runs.json` and `runs/{run-id}/` log directories
 - `logging.dir`: log files
 - `logging.max_files`: local log retention cap; older `*.log` files are pruned on startup
 
 Lifecycle labels use a configurable prefix set by `defaults.label_prefix` (default: `maestro`). The
 default labels are `{prefix}:active`, `{prefix}:done`, `{prefix}:failed`, and `{prefix}:retry`.
 When `defaults.on_dispatch`, `defaults.on_complete`, or `defaults.on_failure` are configured, those
-hooks apply to every source unless a source overrides the same hook locally. Custom labels from
-`add_labels`/`remove_labels` replace the built-in done/failed defaults, but `{prefix}:active` is
-always applied on dispatch and removed on completion or failure. See
+hooks apply to every source unless a source overrides the same hook locally. `on_dispatch` supports
+both `add_labels`/`remove_labels` and `state`. When custom labels are provided in `on_complete` or
+`on_failure`, no default `{prefix}:done` or `{prefix}:failed` label is added — only the explicit
+labels from the hook are applied. `{prefix}:active` is always removed on completion or failure. See
 [getting-started.md](getting-started.md#lifecycle-transitions) for pipeline examples.
 Labels such as `{prefix}:coding` or `{prefix}:review` are not reserved; they remain visible to
 source filters and are intended for pipeline routing. Only the exact reserved lifecycle labels are
@@ -98,6 +122,10 @@ The current runtime allows multiple sources in one config. Concurrency is bounde
 
 - `defaults.max_concurrent_global`
 - `agent_types[].max_concurrent`
+
+When a retry becomes due, Maestro re-fetches the issue from the tracker. If the issue is terminal
+or no longer matches the source filter, the retry is automatically discarded instead of dispatched.
+This prevents stale retries from re-running work that was externally resolved.
 
 Stall detection uses the configured inactivity timeout:
 
@@ -140,6 +168,15 @@ The first API slice is read-mostly with approval actions:
 - `POST /api/v1/approvals/<request_id>/approve`
 - `POST /api/v1/approvals/<request_id>/reject`
 - `POST /api/v1/messages/<request_id>/reply`
+- `POST /api/v1/runs/<run_id>/stop`
+- `GET /api/v1/config/raw`
+- `POST /api/v1/config/validate`
+- `POST /api/v1/config/dry-run`
+- `POST /api/v1/config/save`
+- `GET /api/v1/config/backups`
+- `POST /api/v1/config/backups/create`
+- `GET /api/v1/config/backups/<backup_id>`
+- `POST /api/v1/packs/save`
 
 The built-in dashboard at `/` uses those resource endpoints directly and listens to `/api/v1/stream` over Server-Sent Events so the page refreshes on runtime changes without a fixed polling loop. The browser UI is dark by default, has a light theme toggle, and supports source/run selection, quick filtering, sorting, retries, approvals, and a context-aware event timeline.
 
@@ -211,6 +248,18 @@ Use `Ctrl-C` or stop the process cleanly. Maestro will:
 - persist state
 - pick the run back up as a retry on the next start if needed
 
+Shutdown enforces a 5-second timeout. If the harness does not stop within that window, Maestro
+exits anyway. This prevents `Ctrl-C` from hanging indefinitely on a stuck agent process.
+
+## Doctor
+
+Run `maestro doctor --config /path/to/maestro.yaml` to validate your setup. It checks:
+
+- config loads and passes validation
+- required harness binaries (`claude`, `codex`) are available in `PATH`
+
+Use this before your first run or after changing `agent_types[].harness` entries.
+
 ## Troubleshooting
 
 No issues found:
@@ -240,6 +289,7 @@ Run stalls and gets retried:
 Useful inspection commands:
 
 ```bash
+maestro doctor --config /path/to/maestro.yaml
 maestro inspect config --config /path/to/maestro.yaml
 maestro inspect state --config /path/to/maestro.yaml
 maestro inspect state --state-dir /path/to/state-dir

@@ -614,7 +614,7 @@ codex:
   model: gpt-5.4
   reasoning: high
   max_turns: 12
-  thread_sandbox: workspace-write
+  thread_sandbox: workspaceWrite
   turn_sandbox_policy:
     type: workspaceWrite
   extra_args: ["--search"]
@@ -674,7 +674,7 @@ logging:
 	if got, want := agent.Codex.MaxTurns, 12; got != want {
 		t.Fatalf("max turns = %d, want %d", got, want)
 	}
-	if got, want := agent.Codex.ThreadSandbox, "workspace-write"; got != want {
+	if got, want := agent.Codex.ThreadSandbox, "workspaceWrite"; got != want {
 		t.Fatalf("thread sandbox = %q, want %q", got, want)
 	}
 	if got := agent.Codex.TurnSandboxPolicy["type"]; got != "workspaceWrite" {
@@ -944,6 +944,58 @@ logging:
 	}
 	if got := agent.MaxConcurrent; got != 2 {
 		t.Fatalf("max concurrent = %d", got)
+	}
+}
+
+func TestTokenEnvAcceptsDollarPrefix(t *testing.T) {
+	t.Setenv("MY_GITLAB_TOKEN", "secret-from-dollar")
+
+	root := t.TempDir()
+	promptDir := filepath.Join(root, "agents", "code-pr")
+	if err := os.MkdirAll(promptDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(promptDir, "prompt.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+
+	configPath := filepath.Join(root, "maestro.yaml")
+	raw := `
+defaults:
+  poll_interval: 5s
+  max_concurrent_global: 1
+sources:
+  - name: test
+    tracker: gitlab
+    connection:
+      base_url: https://gitlab.example.com
+      token_env: $MY_GITLAB_TOKEN
+      project: team/project
+    filter:
+      labels: [agent:ready]
+    agent_type: code-pr
+agent_types:
+  - name: code-pr
+    harness: claude-code
+    workspace: git-clone
+    prompt: agents/code-pr/prompt.md
+    approval_policy: auto
+    max_concurrent: 1
+workspace:
+  root: ./workspaces
+logging:
+  dir: ./logs
+`
+	if err := os.WriteFile(configPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := cfg.Sources[0].Connection.Token; got != "secret-from-dollar" {
+		t.Fatalf("token = %q, want %q", got, "secret-from-dollar")
 	}
 }
 

@@ -15,7 +15,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: https://gitlab.com
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       project: your-group/your-project
     filter:
       labels: [agent:ready]
@@ -27,7 +27,7 @@ sources:
     tracker: gitlab-epic
     connection:
       base_url: https://gitlab.com
-      token_env: MAESTRO_GITLAB_TOKEN
+      token_env: $MAESTRO_GITLAB_TOKEN
       group: your-group
     repo: https://gitlab.com/your-group/your-project.git
     epic_filter:
@@ -41,7 +41,7 @@ sources:
   - name: linear-project
     tracker: linear
     connection:
-      token_env: MAESTRO_LINEAR_TOKEN
+      token_env: $MAESTRO_LINEAR_TOKEN
       project: Your Linear Project
     repo: https://gitlab.com/your-group/your-project.git
     filter:

@@ -1305,7 +1305,7 @@ func (s *Server) withValidationEnv(fn func() error) error {
 	defer validationEnvMu.Unlock()
 
 	for _, source := range s.configSummary.Sources {
-		key := strings.TrimSpace(source.TokenEnv)
+		key := strings.TrimPrefix(strings.TrimSpace(source.TokenEnv), "$")
 		if key == "" {
 			continue
 		}

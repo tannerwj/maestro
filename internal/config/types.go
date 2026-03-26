@@ -509,10 +509,9 @@ func ResolveLifecycleTransition(defaults *LifecycleTransition, override *Lifecyc
 // ResolveCodexConfig merges hardcoded defaults, top-level codex_defaults, and per-agent override.
 func ResolveCodexConfig(defaults *CodexConfig, override *CodexConfig) CodexConfig {
 	base := &CodexConfig{
-		Model:         "gpt-5.4",
-		Reasoning:     "high",
-		MaxTurns:      20,
-		ThreadSandbox: "workspace-write",
+		Model:     "gpt-5.4",
+		Reasoning: "high",
+		MaxTurns:  20,
 	}
 	return *mergeCodexConfig(mergeCodexConfig(base, defaults), override)
 }

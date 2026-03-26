@@ -3,7 +3,7 @@ defaults:
   stall_timeout: 30m
   label_prefix: maestro
 
-agent_packs_dir: agents
+agent_packs_dir: ../agents
 
 user:
   name: "TJ"
@@ -14,7 +14,7 @@ sources:
   - name: swiftoot-implement
     tracker: linear
     connection:
-      token_env: LINEAR_API_KEY
+      token_env: $LINEAR_API_KEY
     project_url: https://linear.app/tannerwj/project/swiftoot-b7f277f40ef3/issues
     repo: https://github.com/tannerwj/SwiftOOT.git
     filter:
@@ -37,7 +37,7 @@ sources:
   - name: swiftoot-review
     tracker: linear
     connection:
-      token_env: LINEAR_API_KEY
+      token_env: $LINEAR_API_KEY
     project_url: https://linear.app/tannerwj/project/swiftoot-b7f277f40ef3/issues
     repo: https://github.com/tannerwj/SwiftOOT.git
     filter:
@@ -58,19 +58,16 @@ agent_types:
     codex:
       reasoning: high
       max_turns: 20
-      thread_sandbox: danger-full-access
-      turn_sandbox_policy:
-        type: dangerFullAccess
 
   - name: review-claude
     agent_pack: review-claude
     max_concurrent: 2
 
 workspace:
-  root: ./var/workspaces
+  root: ../var/workspaces
 
 state:
-  dir: ./var/state
+  dir: ../var/state
   retry_base: 30s
   max_retry_backoff: 10m
   max_attempts: 3
@@ -82,5 +79,5 @@ server:
 
 logging:
   level: info
-  dir: ./var/logs
+  dir: ../var/logs
   max_files: 20

@@ -242,14 +242,14 @@ func TestCodexApprovalPolicyAndSandboxSelection(t *testing.T) {
 	if got := codexApprovalPolicy("auto"); got != "never" {
 		t.Fatalf("auto approval policy = %q, want never", got)
 	}
-	if got := codexApprovalPolicy("manual"); got != "on-request" {
-		t.Fatalf("manual approval policy = %q, want on-request", got)
+	if got := codexApprovalPolicy("manual"); got != "onRequest" {
+		t.Fatalf("manual approval policy = %q, want onRequest", got)
 	}
-	if got := codexSandboxMode("auto"); got != "danger-full-access" {
-		t.Fatalf("auto sandbox mode = %q, want danger-full-access", got)
+	if got := codexSandboxMode("auto"); got != "dangerFullAccess" {
+		t.Fatalf("auto sandbox mode = %q, want dangerFullAccess", got)
 	}
-	if got := codexSandboxMode("manual"); got != "workspace-write" {
-		t.Fatalf("manual sandbox mode = %q, want workspace-write", got)
+	if got := codexSandboxMode("manual"); got != "workspaceWrite" {
+		t.Fatalf("manual sandbox mode = %q, want workspaceWrite", got)
 	}
 
 	policy := codexSandboxPolicy("manual", "/tmp/work")

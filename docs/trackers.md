@@ -80,12 +80,44 @@ sources:
     repo: /path/or/url/to/repo.git
 ```
 
+Project identification supports two forms. You can use `project_url` with a full Linear project URL:
+
+```yaml
+sources:
+  - tracker: linear
+    project_url: https://linear.app/myteam/project/my-project-abc123/issues
+    repo: /path/or/url/to/repo.git
+```
+
+Or use `connection.project` with a project name or GraphQL project ID:
+
+```yaml
+sources:
+  - tracker: linear
+    connection:
+      project: My Project
+    repo: /path/or/url/to/repo.git
+```
+
+When `project_url` is set, Maestro extracts the project slug from the URL and resolves the project ID via GraphQL. If both are set, `project_url` takes priority.
+
+### Linear State Transitions
+
+`UpdateIssueState` is fully implemented. When lifecycle hooks include a `state` field, Maestro resolves the target workflow state ID per-issue by querying the issue's team workflow states via GraphQL. State name matching is case-insensitive. Resolved state IDs are cached per team.
+
 Use Linear when:
 
 - planning lives in Linear but code may live elsewhere
 - you want to test the same orchestration loop against a non-GitLab tracker
 
-Sample config: [examples/linear-claude-auto.yaml](../examples/linear-claude-auto.yaml)
+Sample config: [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml)
+
+## Dispatch Guard
+
+Before dispatching an issue, Maestro re-fetches it from the tracker to verify it is still eligible. If the
+issue has become terminal, no longer matches the source filter, or has gained a lifecycle label since the
+last poll, dispatch is silently skipped. This prevents races between the poll interval and external tracker
+changes (e.g., a human closing the issue between poll and dispatch).
 
 ## Tracker Writeback
 

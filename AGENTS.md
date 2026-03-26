@@ -54,24 +54,27 @@ Packs live in `agents/<pack-name>/` and contain:
 
 ```
 agents/<pack-name>/
-├── agent.yaml       # required: name, description, harness, workspace, approval_policy, prompt
-├── prompt.md        # required: Go template with {{.Agent}}, {{.Issue}}, {{.User}} context
+├── agent.yaml       # required: pack config
+├── prompt.md        # required: Go template with issue/agent/user context
 ├── context.md       # optional: operating context included in prompt
-└── context/         # optional: additional context files
+├── context/         # optional: additional context files
+├── claude/          # optional: copied to workspace as .claude/ (CLAUDE.md, settings)
+└── codex/           # optional: copied to workspace as .codex/ (skills, settings)
 ```
 
-- `agent.yaml` fields: name, description, instance_name, harness, workspace, prompt, approval_policy, max_concurrent, tools, skills, context_files
-- `prompt.md` uses Go `text/template` syntax. Available data: `.Agent`, `.Issue`, `.User`
-- Packs are referenced from `maestro.yaml` via `agent_types[].pack` (path to pack dir or agent.yaml)
+- `agent.yaml` fields: name, description, instance_name, harness, workspace, prompt, approval_policy, approval_timeout, communication, max_concurrent, stall_timeout, env, tools, skills, context_files, codex, claude
+- `prompt.md` uses Go `text/template` syntax. Available data: `.Agent`, `.Issue`, `.User`, `.Source`, `.Attempt`, `.AgentName`, `.OperatorInstruction`
+- Packs are referenced from `maestro.yaml` via `agent_types[].agent_pack` (name, path, or `repo:` prefix)
 - Config YAML overrides pack defaults. tools/skills/context_files merge (not replace).
+- `approval_policy`: `auto` (no approval) or `manual` (all actions require approval)
 
 ## Config
 
 - YAML config at path passed via `--config` flag.
 - Sources define tracker + filters + agent type mapping.
 - Agent types define harness + workspace + approval policy + prompt.
-- Validation in `internal/config/validate.go` — `ValidateMVP()` enforces the Phase 1 contract.
-- Env vars referenced by name (e.g., `token_env: GITLAB_TOKEN`), not inlined.
+- Validation in `internal/config/validate.go` — `ValidateMVP()` enforces the config contract.
+- Env vars referenced by name (e.g., `token_env: $GITLAB_TOKEN`), not inlined.
 
 ## Key files
 
@@ -80,6 +83,7 @@ agents/<pack-name>/
 | Entry point | `cmd/maestro/main.go` |
 | Orchestration | `internal/orchestrator/{service,loop,dispatch,supervisor}.go` |
 | Approval/message flow | `internal/orchestrator/{approvals,messages}.go` |
+| Hooks | `internal/orchestrator/hooks.go` |
 | Harness interface | `internal/harness/harness.go` |
 | Claude adapter | `internal/harness/claude/adapter.go` |
 | Codex adapter | `internal/harness/codex/adapter.go` |
@@ -89,7 +93,11 @@ agents/<pack-name>/
 | Config types | `internal/config/types.go` |
 | Config validation | `internal/config/validate.go` |
 | Pack resolution | `internal/config/agent_packs.go` |
+| Prompt rendering | `internal/prompt/render.go` |
 | Workspace | `internal/workspace/{manager,git}.go` |
 | State persistence | `internal/state/store.go` |
 | Slack channel | `internal/channel/slack/` |
-| Spec | `SPEC.md` |
+| Web API | `internal/api/server.go` |
+| Web frontend | `web/` |
+| TUI | `internal/tui/` |
+| Logging | `internal/logging/` |

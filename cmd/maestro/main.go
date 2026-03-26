@@ -256,6 +256,16 @@ func doctorCommand(args []string) {
 	fmt.Println()
 	fmt.Println("Config")
 	fmt.Printf("  OK  %s\n", cfg.ConfigPath)
+
+	warnings := config.DiagnoseConfig(cfg)
+	if len(warnings) > 0 {
+		fmt.Println()
+		fmt.Println("Warnings")
+		for _, w := range warnings {
+			fmt.Printf("  WARN  %s\n", w)
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("Harness binaries")
 	for _, check := range checks {

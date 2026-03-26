@@ -161,7 +161,7 @@ func (r *activeRun) Wait() error {
 
 func (r *claudeRun) execute(binary string, approvals chan<- harness.ApprovalRequest) {
 	switch r.approvalPolicy {
-	case "manual", "destructive-only":
+	case "manual":
 		request, err := r.runDetection(binary)
 		if err != nil {
 			r.finish(err)

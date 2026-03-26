@@ -1,6 +1,10 @@
-# Maestro Service Specification
+# Maestro Service Specification (Historical)
 
-Status: Draft v1
+> **This is the original design document written before implementation.** The code and
+> [README](../README.md) are authoritative for current behavior. This file is preserved
+> for historical context on design decisions and trade-offs.
+
+Status: Archived (original: Draft v1)
 
 Purpose: Define a service that orchestrates AI coding and operations agents across multiple work
 sources, agent harnesses, and communication channels — on behalf of individual users.
@@ -116,7 +120,7 @@ Important boundaries:
      - Workspace strategy (git-clone, none).
      - Tools, MCPs, and environment available to the agent.
      - Prompt template.
-     - Approval policy (auto, manual, destructive-only).
+     - Approval policy (auto, manual).
      - Communication channel preference.
      - Concurrency limits.
      - Credential strategy (user credentials, service account, read-only).
@@ -309,7 +313,6 @@ Fields:
 - `approval_policy` (string)
   - `auto`: no human approval needed. Agent runs autonomously.
   - `manual`: all tool calls require approval.
-  - `destructive-only`: only destructive/write actions need approval.
 - `communication` (string, optional)
   - Override the default communication channel for this agent type.
   - Value references a channel name from the `channels` config section.
@@ -330,7 +333,7 @@ Fields:
   - `model` (string, optional): model name. Default from `codex_defaults.model` (`gpt-5.4`).
   - `reasoning` (string, optional): reasoning effort. Default from `codex_defaults.reasoning` (`high`).
   - `max_turns` (integer, optional): max continuation turns. Default from `codex_defaults.max_turns` (`20`).
-  - `thread_sandbox` (string, optional): Codex thread sandbox mode. Default from `codex_defaults.thread_sandbox` (`workspace-write`).
+  - `thread_sandbox` (string, optional): Codex thread sandbox mode. Derived from `approval_policy` if not set (`auto` → `dangerFullAccess`, `manual` → `workspaceWrite`).
   - `turn_sandbox_policy` (string, optional): Codex per-turn sandbox policy.
   - `extra_args` (list of strings, optional): additional CLI arguments passed to the harness.
 - `claude` (map, optional)
@@ -639,7 +642,7 @@ CLI flag `--config` overrides the config file location.
 defaults:
   poll_interval: 60s
   harness: claude-code
-  approval_policy: destructive-only
+  approval_policy: manual
   credentials: user
   communication: slack-dm
   max_concurrent_global: 5
@@ -653,7 +656,6 @@ codex_defaults:
   model: gpt-5.4
   reasoning: high
   max_turns: 20
-  thread_sandbox: workspace-write
 
 claude_defaults:
   model: opus-4.6
@@ -672,7 +674,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: https://gitlab.example.com
-      token_env: GITLAB_TOKEN
+      token_env: $GITLAB_TOKEN
       project: infra/firewall-access
     filter:
       labels: [agent:ready]
@@ -691,7 +693,7 @@ sources:
     tracker: gitlab
     connection:
       base_url: https://gitlab.example.com
-      token_env: GITLAB_TOKEN
+      token_env: $GITLAB_TOKEN
       epic: group/project&42
     filter:
       labels: [ready-for-dev]
@@ -703,7 +705,7 @@ sources:
   - name: personal-linear
     tracker: linear
     connection:
-      token_env: LINEAR_API_KEY
+      token_env: $LINEAR_API_KEY
       team: PERSONAL
     repo: git@gitlab.example.com:tj/personal-app.git
     filter:
@@ -753,7 +755,7 @@ channels:
   - name: slack-dm
     kind: slack
     config:
-      token_env: SLACK_BOT_TOKEN
+      token_env: $SLACK_BOT_TOKEN
       mode: dm
 
   - name: teams-dm
@@ -909,15 +911,16 @@ Template input variables:
 
 ### 6.2 Approval Policies
 
-Three policies, configured per agent type:
+Two policies, configured per agent type:
 
 - `auto`: agent runs fully autonomously. No approval interception. Suitable for read-only
   triage agents or well-scoped coding tasks where the MR review is the approval gate.
-- `destructive-only`: only destructive or write actions trigger approval requests. The harness
-  adapter determines which actions are destructive based on the harness's own categorization.
-  For Claude Code, this maps to hooks on write/execute tool calls.
 - `manual`: all tool calls require explicit approval. Suitable for high-stakes operations like
   firewall changes or production config modifications.
+
+Future: a `destructive-only` policy that auto-approves read-only actions and only routes
+destructive/write actions for approval. This requires harness-side action classification that
+neither Claude Code nor Codex currently expose in a usable way.
 
 When approval is required, the flow is:
 
@@ -1187,7 +1190,7 @@ Approve(ctx, request, response) → error
 
 #### 10.2.1 Claude Hook Approval Mechanism
 
-For approval policies that require interception (`manual`, `destructive-only`), Maestro integrates
+For approval policies that require interception (`manual`), Maestro integrates
 with Claude Code through a synchronous local approval broker.
 
 - **Hook entrypoint**: the Claude `PreToolUse` hook invokes a Maestro-provided helper script or
@@ -1208,7 +1211,7 @@ Hook request payload:
 - `issue_id` (string)
 - `tool_name` (string)
 - `tool_input` (string or structured JSON): serialized tool arguments as received from Claude.
-- `approval_policy` (string): `manual` or `destructive-only`.
+- `approval_policy` (string): `manual`.
 - `requested_at` (timestamp)
 
 Hook response payload:
@@ -1410,8 +1413,6 @@ separate component — it is logic within the orchestrator that routes approval 
 2. Orchestrator looks up the agent type's approval policy:
    - `auto`: immediately approve. No routing.
    - `manual`: route all requests.
-   - `destructive-only`: check if the tool/action is classified as destructive by the harness.
-     If yes, route. If no, auto-approve.
 3. If routing: construct a `Message` with the approval context and send via the agent type's
    configured communication channel.
 4. Wait for the human's response (with timeout).

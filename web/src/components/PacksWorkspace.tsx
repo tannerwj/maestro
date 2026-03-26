@@ -148,7 +148,6 @@ export function PacksWorkspace({
               <select value={packDraft.approvalPolicy} onChange={(event) => onPackDraftChange({ ...packDraft, approvalPolicy: event.target.value })}>
                 <option value="auto">auto</option>
                 <option value="manual">manual</option>
-                <option value="destructive-only">destructive-only</option>
               </select>
             </Control>
             <Control label="Max concurrency">
