@@ -209,6 +209,9 @@ func mergeSourceDefaults(target *SourceConfig, defaults SourceDefaultsEntry) {
 	if target.PollInterval.Duration == 0 {
 		target.PollInterval = defaults.PollInterval
 	}
+	if target.StallTimeout.Duration == 0 {
+		target.StallTimeout = defaults.StallTimeout
+	}
 	if target.RetryBase.Duration == 0 {
 		target.RetryBase = defaults.RetryBase
 	}

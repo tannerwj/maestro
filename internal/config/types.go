@@ -217,6 +217,7 @@ type SourceDefaultsEntry struct {
 	AgentType       string           `yaml:"agent_type"`
 	MaxActiveRuns   int              `yaml:"max_active_runs"`
 	PollInterval    Duration         `yaml:"poll_interval"`
+	StallTimeout    Duration         `yaml:"stall_timeout"`
 	RetryBase       Duration         `yaml:"retry_base"`
 	MaxRetryBackoff Duration         `yaml:"max_retry_backoff"`
 	MaxAttempts     int              `yaml:"max_attempts"`
@@ -265,6 +266,7 @@ type SourceConfig struct {
 	MaxRetryBackoff Duration             `yaml:"max_retry_backoff"`
 	MaxAttempts     int                  `yaml:"max_attempts"`
 	RespectBlockers *bool                `yaml:"respect_blockers"`
+	StallTimeout    Duration             `yaml:"stall_timeout"`
 	OnDispatch      *DispatchTransition  `yaml:"on_dispatch"`
 	OnComplete      *LifecycleTransition `yaml:"on_complete"`
 	OnFailure       *LifecycleTransition `yaml:"on_failure"`
@@ -387,6 +389,13 @@ func (s SourceConfig) EffectiveMaxAttempts(state StateConfig) int {
 		return s.MaxAttempts
 	}
 	return state.MaxAttempts
+}
+
+func (s SourceConfig) EffectiveStallTimeout(agent AgentTypeConfig) time.Duration {
+	if s.StallTimeout.Duration > 0 {
+		return s.StallTimeout.Duration
+	}
+	return agent.StallTimeout.Duration
 }
 
 func (s SourceConfig) EffectiveRespectBlockers() bool {
