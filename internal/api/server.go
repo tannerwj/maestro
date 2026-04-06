@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -48,9 +49,22 @@ type Server struct {
 	logger        *slog.Logger
 	runtime       runtimeView
 	configSummary ops.ConfigSummary
+	configMu      sync.RWMutex
 	httpServer    *http.Server
 	frontendDir   string
 	frontendFS    fs.FS
+}
+
+func (s *Server) getConfigSummary() ops.ConfigSummary {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.configSummary
+}
+
+func (s *Server) setConfigSummary(summary ops.ConfigSummary) {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	s.configSummary = summary
 }
 
 type statusResponse struct {
@@ -402,7 +416,7 @@ func New(cfg *config.Config, logger *slog.Logger, runtime runtimeView) *Server {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	if ephemeralKey {
-		logger.Info("generated ephemeral api key for web api", "addr", server.addr, "api_key", apiKey)
+		logger.Info("generated ephemeral api key for web api", "addr", server.addr, "api_key_hint", apiKey[:8]+"…")
 	}
 	return server
 }
@@ -411,7 +425,7 @@ func (s *Server) currentConfigSummary() ops.ConfigSummary {
 	if provider, ok := s.runtime.(configSummaryProvider); ok {
 		return provider.ConfigSummary()
 	}
-	return s.configSummary
+	return s.getConfigSummary()
 }
 
 func (s *Server) Addr() string {
@@ -842,7 +856,7 @@ func (s *Server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	summary := ops.SummarizeConfig(cfg)
-	s.configSummary = summary
+	s.setConfigSummary(summary)
 	writeJSON(w, http.StatusOK, configValidateResponse{
 		OK:            true,
 		GeneratedAt:   time.Now().UTC(),
@@ -967,7 +981,7 @@ func (s *Server) handleConfigBackupDetail(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
-		s.configSummary = ops.SummarizeConfig(cfg)
+		s.setConfigSummary(ops.SummarizeConfig(cfg))
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":             true,
 			"generated_at":   time.Now().UTC(),
@@ -1264,7 +1278,7 @@ func (s *Server) handlePackSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.configSummary = summary
+	s.setConfigSummary(summary)
 	writeJSON(w, http.StatusOK, packSaveResponse{
 		OK:            true,
 		GeneratedAt:   time.Now().UTC(),

@@ -1,0 +1,129 @@
+defaults:
+  poll_interval: 30s
+  stall_timeout: 30m
+  label_prefix: fw
+
+agent_packs_dir: agents
+
+user:
+  name: "Brandon Taylor"
+  gitlab_username: "btaylor"
+
+sources:
+  # Phase 1: Auto-pick up all open firewall requests and research them.
+  # No assignee filter — Maestro picks up any approved ticket automatically.
+  # Research runs unattended (approval_policy: auto). Safety gate is Phase 2.
+  - name: fw-requests
+    display_group: Firewall Requests
+    label_prefix: fwr
+    tracker: gitlab
+    connection:
+      base_url: https://git.taxhawk.com
+      token_env: MAESTRO_TAXHAWK_GITLAB_TOKEN
+      project: taxhawk/it/it-department/change-control/firewall-access
+    repo: network-and-security/firewall-requests
+    filter:
+      states: [opened]
+    agent_type: fw-research
+    poll_interval: 30s
+    max_attempts: 3
+    retry_base: 30s
+    max_retry_backoff: 10m
+    on_complete:
+      add_labels: [fw:plan-posted]
+      assign: btaylor
+    on_failure:
+      add_labels: [fw:needs-attention]
+
+  # Phase 2: Execute approved plan. Requires manual Slack approval before any Panorama changes.
+  - name: fw-execute
+    display_group: Firewall Execute
+    label_prefix: fwx
+    tracker: gitlab
+    connection:
+      base_url: https://git.taxhawk.com
+      token_env: MAESTRO_TAXHAWK_GITLAB_TOKEN
+      project: taxhawk/it/it-department/change-control/firewall-access
+    filter:
+      labels: [fw:plan-posted]
+    agent_type: fw-execute
+    poll_interval: 30s
+    max_attempts: 2
+    retry_base: 30s
+    max_retry_backoff: 5m
+    on_complete:
+      remove_labels: [fw:plan-posted]
+      add_labels: [fw:deployed]
+    on_failure:
+      remove_labels: [fw:plan-posted]
+      add_labels: [fw:needs-attention]
+
+  # Phase 3: Verify deployed changes. Checks if requester confirmed working.
+  - name: fw-verify
+    display_group: Firewall Verify
+    label_prefix: fwv
+    tracker: gitlab
+    connection:
+      base_url: https://git.taxhawk.com
+      token_env: MAESTRO_TAXHAWK_GITLAB_TOKEN
+      project: taxhawk/it/it-department/change-control/firewall-access
+    filter:
+      labels: [fw:deployed]
+    agent_type: fw-verify
+    poll_interval: 5m
+    max_attempts: 1
+    on_complete:
+      remove_labels: [fw:deployed]
+    on_failure:
+      add_labels: [fw:needs-attention]
+
+agent_types:
+  - name: fw-research
+    agent_pack: fw-research
+    approval_policy: auto
+    communication: slack-dm
+    max_concurrent: 5
+
+  - name: fw-execute
+    agent_pack: fw-execute
+    approval_policy: manual
+    communication: slack-dm
+    max_concurrent: 1
+
+  - name: fw-verify
+    agent_pack: fw-verify
+    approval_policy: manual
+    communication: slack-dm
+    max_concurrent: 1
+
+channels:
+  - name: slack-dm
+    kind: slack
+    config:
+      mode: dm
+      token_env: MAESTRO_SLACK_BOT_TOKEN
+      app_token_env: MAESTRO_SLACK_APP_TOKEN
+      user_id_env: MAESTRO_SLACK_USER_ID
+
+controls:
+  before_work:
+    enabled: false
+
+workspace:
+  root: ./var/workspaces
+
+state:
+  dir: ./var/state
+  retry_base: 30s
+  max_retry_backoff: 10m
+  max_attempts: 3
+
+server:
+  enabled: true
+  host: 127.0.0.1
+  port: 7777
+
+logging:
+  level: info
+  dir: ./var/logs
+  max_files: 20

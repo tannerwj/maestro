@@ -12,6 +12,8 @@ var replacements = []struct {
 	{re: regexp.MustCompile(`(?i)([?&](?:access[_-]?token|private[_-]?token|token)=)[^&\s]+`), to: `${1}REDACTED`},
 	{re: regexp.MustCompile(`\bglpat-[A-Za-z0-9._-]+\b`), to: `glpat-REDACTED`},
 	{re: regexp.MustCompile(`\blin_api_[A-Za-z0-9._-]+\b`), to: `lin_api_REDACTED`},
+	{re: regexp.MustCompile(`\bxoxb-[A-Za-z0-9._-]+\b`), to: `xoxb-REDACTED`},
+	{re: regexp.MustCompile(`\bxapp-[A-Za-z0-9._-]+\b`), to: `xapp-REDACTED`},
 }
 
 func String(raw string) string {

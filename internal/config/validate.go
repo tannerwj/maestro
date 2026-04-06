@@ -71,16 +71,16 @@ func ValidateMVP(cfg *Config) error {
 			return err
 		}
 		if cfg.CodexDefaults != nil && cfg.CodexDefaults.MaxTurns < 0 {
-			return fmt.Errorf("codex_defaults max_turns must be at least 1")
+			return fmt.Errorf("codex_defaults max_turns must not be negative")
 		}
 		if cfg.ClaudeDefaults != nil && cfg.ClaudeDefaults.MaxTurns < 0 {
-			return fmt.Errorf("claude_defaults max_turns must be at least 1")
+			return fmt.Errorf("claude_defaults max_turns must not be negative")
 		}
 		if agent.Codex != nil && agent.Codex.MaxTurns < 0 {
-			return fmt.Errorf("agent %q codex max_turns must be at least 1", agent.Name)
+			return fmt.Errorf("agent %q codex max_turns must not be negative", agent.Name)
 		}
 		if agent.Claude != nil && agent.Claude.MaxTurns < 0 {
-			return fmt.Errorf("agent %q claude max_turns must be at least 1", agent.Name)
+			return fmt.Errorf("agent %q claude max_turns must not be negative", agent.Name)
 		}
 		if !slices.Contains([]string{"git-clone", "none"}, agent.Workspace) {
 			return fmt.Errorf("agent %q requires workspace git-clone or none", agent.Name)

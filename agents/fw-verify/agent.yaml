@@ -1,0 +1,13 @@
+name: fw-verify
+description: Phase 3 — Check deployed firewall tickets for user feedback. If the user confirms working, ask to close. If not working, ask to investigate logs.
+instance_name: fw-verify-agent
+harness: claude-code
+workspace: none
+prompt: prompt.md
+approval_policy: manual
+max_concurrent: 1
+claude:
+  model: sonnet
+  reasoning: medium
+context_files:
+  - ../fw-shared/context.md

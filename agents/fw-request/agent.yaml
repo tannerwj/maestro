@@ -1,0 +1,13 @@
+name: fw-request
+description: "DEPRECATED — Superseded by fw-research + fw-execute pipeline. Original monolithic firewall change request agent."
+instance_name: fw-request-agent
+harness: claude-code
+workspace: git-clone
+prompt: prompt.md
+approval_policy: manual
+max_concurrent: 1
+claude:
+  model: sonnet
+  reasoning: high
+context_files:
+  - context.md

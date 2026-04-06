@@ -14,7 +14,7 @@ func (s *Service) reconcileStalledRun(ctx context.Context) {
 	s.mu.RUnlock()
 
 	for _, run := range runs {
-		if run.Status != domain.RunStatusActive && run.Status != domain.RunStatusAwaiting {
+		if run.Status != domain.RunStatusActive && run.Status != domain.RunStatusAwaiting && run.Status != domain.RunStatusPreparing {
 			continue
 		}
 		if run.LastActivityAt.IsZero() {

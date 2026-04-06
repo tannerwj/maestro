@@ -1,0 +1,13 @@
+name: fw-execute
+description: Phase 2 — Execute an approved firewall change plan. Reads the plan from the GitLab issue, applies it to Panorama, commits, pushes, and posts a completion comment.
+instance_name: fw-execute-agent
+harness: claude-code
+workspace: none
+prompt: prompt.md
+approval_policy: manual
+max_concurrent: 1
+claude:
+  model: sonnet
+  reasoning: high
+context_files:
+  - ../fw-shared/context.md

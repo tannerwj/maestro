@@ -1,0 +1,146 @@
+# TaxHawk Network — Firewall Context
+
+## Panorama
+- **Host**: 10.3.1.40 (lvpanorama.taxhawk.lv)
+- **PAN-OS**: 11.1.13-h1
+- All sites managed centrally. Changes go to Panorama first, then pushed to device groups.
+
+---
+
+## Sites, Device Groups, and Subnets
+
+### PRV — Provo HQ (New Building)
+- **Device Group**: PRVHQ
+- **Template**: Both_prvHQ
+- **Firewalls**: prvHQfw1 / prvHQfw2 (PA-1420 HA)
+- **Subnet**: 10.0.x.x
+
+| Zone | Subnet | Purpose |
+|------|--------|---------|
+| Cameras | 10.0.3.0/24 | Verkada cameras |
+| Building | 10.0.5.0/24 | Building automation |
+| Printers | 10.0.6.0/24 | HP printers |
+| ConferenceAV | 10.0.7-8.0/24 | Conference AV |
+| VMware | 10.0.9.0/24 | vSphere management |
+| Servers | 10.0.10.0/24 | Servers |
+| Domain | 10.0.11.0/24 | Active Directory |
+| Customer Support | 10.0.99.0/24 | CS department |
+| Users | 10.0.100.0/22 | General user data |
+| Guest | 10.0.104.0/23 | Guest / 802.1X fallback |
+| IoT | 10.0.106.0/23 | IoT devices |
+| VPN | — | Nova VPN (GlobalProtect) remote users |
+| MGMT | 10.0.1.0/24 | Switch/device management |
+| Outside | 136.41.65.89, 204.225.31.74/30, 50.151.131.98/29 | ISPs |
+
+### PRVold — Provo Legacy (Secure Printing)
+- **Device Groups**: prvFWs, prvDFW
+- **Template**: Both_prvFWs
+- **Firewalls**: PRVfw1 / PRVfw2 (PA-3220 HA)
+- **Subnet**: 10.2.x.x
+
+### LV — Las Vegas DC (Production)
+- **Device Group**: lvFWs
+- **Template**: Both_lvFWs
+- **Firewalls**: lvFW1 / lvFW2 (PA-5410 HA)
+- **Subnet**: 10.3.x.x
+
+| Zone | Subnet | Purpose |
+|------|--------|---------|
+| MGMT | 10.3.1.0/24 | Management (Panorama at .40) |
+| OOB | 10.3.2.0/24 | Out-of-band / FW mgmt |
+| Domain | 10.3.6.0/24 | Active Directory |
+| VMware | 10.3.7.0/24 | vSphere management |
+| Admin | 10.3.9.0/24 | Admin access |
+| Logging | 10.3.10.0/24 | Log aggregation |
+| DB | 10.3.50.0/23 | Production database |
+| Tools | 10.3.58.0/24 | DevOps tools |
+| App | 10.3.101.0/24 | Application servers |
+| StageApp | 10.3.102.0/24 | Staging application |
+| Ops | 10.3.103.0/24 | Operations |
+| DMZ | 10.3.150.0/24 | DMZ |
+| K8s | 10.3.160.0/23 | Kubernetes |
+| PCIApp | 10.3.110.0/24 | PCI application servers |
+| PCIdb | 10.3.111.0/24 | PCI databases |
+
+### SLC — Salt Lake City DC (Test/Stage)
+- **Device Group**: slcFWs
+- **Template**: Both_slcFW
+- **Firewalls**: slcFW1 / slcFW2 (PA-5410 HA)
+- **Subnet**: 10.1.x.x
+- **VPN zone**: Talon VPN remote users terminate here
+
+### AWS
+- **Device Groups**: use1-az1, use1-az6
+- **Subnet**: 10.128.x.x
+- **Firewalls**: PA-VM (standalone, 10.128.38.38 / 10.128.39.141)
+
+---
+
+## How to Determine Device Group for a Rule
+
+Match the **source IP** to its site:
+- 10.0.x.x → PRVHQ
+- 10.2.x.x → prvFWs
+- 10.3.x.x → lvFWs
+- 10.1.x.x → slcFWs
+- 10.128.x.x → use1-az1 or use1-az6
+
+If source and destination are on **different sites**, the rule lives in **both** device groups (one each). If traffic crosses sites via VPN tunnel, the rule must exist on both ends.
+
+If source is a user (`user:` field is populated, source address is blank), **do not assume local**. The user may connect via:
+- **Talon VPN** → VPN zone on **slcFWs** — rule goes in slcFWs
+- **Nova VPN (GlobalProtect)** → VPN zone on **PRVHQ** — rule goes in PRVHQ
+- **Local office** → Users zone on **PRVHQ** (10.0.100.0/22) — rule goes in PRVHQ
+
+Search existing rules for the username to determine their access method. Look for rules with the user in source-user fields or rule names containing the username (e.g. `VPN_AWS_<username>`).
+
+---
+
+## Rulebase Convention
+
+- **FW-specific device groups** (prvFWs, slcFWs, lvFWs, PRVHQ, prvDFW, azfw1, use1-az1, use1-az6) → use **post** rulebase (`post-rules.md`)
+- **Shared / overall device groups** (DataCenter, Shared) → use **pre** rulebase (`pre-rules.md`)
+
+---
+
+## Naming Conventions
+
+**Address objects**: Use the hostname if known (e.g., `lvLogstash7`, `lvK8sGrafana`). For IPs without a hostname, use `site-subnet-purpose` (e.g., `lv-10.3.10.36`). For FQDNs, use the hostname portion (e.g., `fraud-th-redshift-workgroup`).
+
+**Security rules**: Match existing patterns in the device group. Common patterns:
+- VPN rules: `VPN AWS <resource>`, `VPN_AWS_<Username>`, `VPN <env> <resource>`
+- General: `<requester-lastname>-<destination-purpose>-<port>` (e.g., `cluff-redshift-5439`)
+
+**Service objects**: Prefer existing service objects (e.g., `application-default`, `service-https`, `service-http`). Only create a new service object if the port is non-standard and no existing object matches.
+
+---
+
+## GitLab Issue Fields
+
+Incoming requests follow this template:
+
+```
+Source Address: <IP, hostname, or blank>
+User: <gitlab username, if user-based request>
+Destination Address: <IP, FQDN, hostname, or description>
+Service/Port: <port number or service name>
+Reason for Request: <business justification>
+How long is this needed: <duration>
+Approver: <manager name>
+Result: <Approve / blank>
+Comment: <optional>
+Director Approver: <name>
+Comment: <optional>
+```
+
+Business approval (Result: Approve) means the requester's manager has already signed off. Your job is the technical implementation — not re-approving the business need.
+
+---
+
+## Important Constraints
+
+- **Never** skip the approval request before making Panorama changes. Always post the change plan first and wait for operator approval.
+- **Never** commit+push to production device groups (lvFWs, slcFWs) without explicit approval.
+- **Always** check for an existing rule that already covers the traffic before creating a new one.
+- If the source/destination description is vague (e.g., "Prod App servers"), use the subnet map to resolve the specific IPs/subnets before drafting.
+- For user-based requests (User field populated, no Source Address), search existing rules for the user to determine their VPN type before assuming PRVHQ/Users.

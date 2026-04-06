@@ -286,12 +286,22 @@ function App() {
   }, [selectedSourceRuns, selectedWorkflowRunId]);
 
   async function handleApproval(requestId: string, action: "approve" | "reject") {
-    await resolveApproval(requestId, action);
+    try {
+      await resolveApproval(requestId, action);
+    } catch (err) {
+      console.error("Failed to resolve approval:", err);
+      alert(`Failed to ${action} approval: ${err instanceof Error ? err.message : String(err)}`);
+    }
     await refresh();
   }
 
   async function handleMessageReply(requestId: string, reply: string) {
-    await replyToMessage(requestId, reply);
+    try {
+      await replyToMessage(requestId, reply);
+    } catch (err) {
+      console.error("Failed to reply to message:", err);
+      alert(`Failed to send reply: ${err instanceof Error ? err.message : String(err)}`);
+    }
     await refresh();
   }
 
