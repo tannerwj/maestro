@@ -30,10 +30,10 @@ sources:
     retry_base: 30s
     max_retry_backoff: 10m
     on_complete:
-      add_labels: [fw:plan-posted]
+      add_labels: [fw:plan-posted, fwr:done]
       assign: btaylor
     on_failure:
-      add_labels: [fw:needs-attention]
+      add_labels: [fw:needs-attention, fwr:failed]
 
   # Phase 2: Execute approved plan. Requires manual Slack approval before any Panorama changes.
   - name: fw-execute
@@ -53,29 +53,17 @@ sources:
     max_retry_backoff: 5m
     on_complete:
       remove_labels: [fw:plan-posted]
-      add_labels: [fw:deployed]
+      add_labels: [fw:deployed, fwx:done]
     on_failure:
       remove_labels: [fw:plan-posted]
-      add_labels: [fw:needs-attention]
+      add_labels: [fw:needs-attention, fwx:failed]
 
-  # Phase 3: Verify deployed changes. Checks if requester confirmed working.
-  - name: fw-verify
-    display_group: Firewall Verify
-    label_prefix: fwv
-    tracker: gitlab
-    connection:
-      base_url: https://git.taxhawk.com
-      token_env: MAESTRO_TAXHAWK_GITLAB_TOKEN
-      project: taxhawk/it/it-department/change-control/firewall-access
-    filter:
-      labels: [fw:deployed]
-    agent_type: fw-verify
-    poll_interval: 5m
-    max_attempts: 1
-    on_complete:
-      remove_labels: [fw:deployed]
-    on_failure:
-      add_labels: [fw:needs-attention]
+  # Phase 3 (verify) is handled by the hourly cron script scripts/fw-verify.sh,
+  # NOT a Maestro source. The cron watches fw:deployed tickets and DMs the
+  # operator when the requester comments. A Maestro fw-verify source was removed
+  # because its on_complete stripped fw:deployed (and max_attempts:1) before the
+  # requester could respond, which raced with and defeated the cron. Per project
+  # guidance, verify/polling phases use cron, not agents.
 
 agent_types:
   - name: fw-research
@@ -86,12 +74,6 @@ agent_types:
 
   - name: fw-execute
     agent_pack: fw-execute
-    approval_policy: manual
-    communication: slack-dm
-    max_concurrent: 1
-
-  - name: fw-verify
-    agent_pack: fw-verify
     approval_policy: manual
     communication: slack-dm
     max_concurrent: 1

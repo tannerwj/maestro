@@ -572,7 +572,12 @@ func (a *Adapter) normalizeLinkedIssue(item issueResponse, fallbackProject strin
 		UpdatedAt:   trackerbase.ParseTime(item.UpdatedAt),
 		Meta: map[string]string{
 			"project":         project,
-			"repo_url":        resolveSourceRepoURL(a.source.Connection.BaseURL, project),
+			// Clone the configured `repo:` (e.g. the config-export repo) when set;
+			// only fall back to the issue's own tracker project when no repo is
+			// configured. Using `project` unconditionally cloned the tracker repo
+			// (README/tickets only) into the agent workspace instead of the config
+			// exports — which is why the fw-research workspace came up empty.
+			"repo_url":        resolveSourceRepoURL(a.source.Connection.BaseURL, repoOrProject(a.source.Repo, project)),
 			"gitlab_base_url": a.source.Connection.BaseURL,
 			"gitlab_scope":    "project-issue",
 			"state_type":      strings.ToLower(strings.TrimSpace(item.State)),
@@ -712,6 +717,17 @@ func chooseRepoURL(project projectResponse) string {
 		return project.SSHURLToRepo
 	}
 	return ""
+}
+
+// repoOrProject returns the configured source repo when set, otherwise the
+// issue's own tracker project. The configured `repo:` (e.g. the config-export
+// repo) is what should be cloned into the agent workspace; the tracker project
+// is only a sensible fallback when no repo is configured for the source.
+func repoOrProject(sourceRepo string, project string) string {
+	if strings.TrimSpace(sourceRepo) != "" {
+		return sourceRepo
+	}
+	return project
 }
 
 func resolveSourceRepoURL(baseURL string, repo string) string {

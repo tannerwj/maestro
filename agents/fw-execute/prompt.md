@@ -97,6 +97,18 @@ For each ticket's plan, do a quick sanity check:
 - Check for inter-ticket conflicts: if two or more plans in the batch create an address object or rule with the same name, exclude the later ticket(s) from the batch and note the conflict.
 - If any plan has conflicts, exclude that ticket from the batch and note it.
 
+**No-op plan backstop (do not skip).** Some plans conclude "no changes needed / traffic already permitted by rule X." That conclusion is read from static config and has closed tickets incorrectly (a rule looked open but was gated by a Source User or URL Category condition). For every such no-change ticket, empirically confirm before accepting it:
+1. From the plan's request summary, take the source, destination, and port.
+2. Call `mcp__panorama__query_denied_traffic` (and/or `query_traffic_logs` with `action="deny"`) for that source→destination/port over a recent window (e.g. 1440 minutes).
+3. If **any** denied/reset sessions for that flow exist, the "already covered" conclusion is **wrong** — do NOT close the ticket. Exclude it from the batch, then:
+   - Remove `fw:plan-posted` and add `fw:needs-attention, fwr:failed` so it routes back for re-research:
+     ```bash
+     glab api "projects/${PROJECT}/issues/<ISSUE_NUM>" --method PUT \
+       -F "remove_labels=fw:plan-posted" -F "add_labels=fw:needs-attention,fwr:failed" --hostname git.taxhawk.com
+     ```
+   - Post a comment quoting the denied-traffic evidence (matched rule, action, session-end-reason) and stating the flow is actually blocked.
+4. If no denies are found, the "no changes" conclusion is plausible — proceed normally, but say in the completion comment that you confirmed zero denied sessions for the flow.
+
 ---
 
 ## Phase 5: Post Batch Execution Plan
@@ -127,7 +139,10 @@ If the operator included guidance above (under Operator Guidance), apply any cor
 If a creation fails partway through:
 - Note which tickets succeeded and which failed.
 - Do NOT commit or push — the candidate config has partial changes.
-- Post a detailed error comment on the trigger issue and stop.
+- **Revert the partial candidate changes** so the next run isn't wedged. Phase 3 confirmed the candidate was clean before you started, so the only pending changes are this run's — it is safe to discard them: call `mcp__panorama__revert_candidate_config` with `confirm=True`. (If Phase 3 had found pre-existing changes you would already have stopped, so this only ever reverts your own partial work.)
+- Post a detailed error comment on the trigger issue (include which creations succeeded/failed and that the candidate was reverted) and stop.
+
+> Why this matters: leaving uncommitted partial changes makes every subsequent execute run abort at the Phase 3 `has_changes` check until someone manually reverts. Reverting here keeps the pipeline unblocked.
 
 ---
 
@@ -178,12 +193,14 @@ Changes committed and pushed to Panorama:
 Access should be active. Please verify connectivity and comment on this issue to confirm." \
   --hostname git.taxhawk.com
 
-# Remove the plan-posted label so Maestro doesn't re-process this ticket
+# Advance the ticket: remove plan-posted, add deployed + done in one call.
+# fw:deployed is what the verify step (cron + any verify source) watches —
+# without it, batched tickets are silently never verified.
 glab api "projects/${PROJECT}/issues/${ISSUE_NUM}" \
-  --method PUT -F "remove_labels=fw:plan-posted" --hostname git.taxhawk.com
+  --method PUT -F "remove_labels=fw:plan-posted" -F "add_labels=fw:deployed,fwx:done" --hostname git.taxhawk.com
 ```
 
-**Important**: Maestro will automatically handle labels for the trigger issue ({{.Issue.Identifier}}) via `on_complete`. You MUST manually remove `fw:plan-posted` from the **other** batched tickets yourself using the API call above, or they will be re-dispatched.
+**Important**: Maestro automatically advances labels for the trigger issue ({{.Issue.Identifier}}) via `on_complete` (removes `fw:plan-posted`, adds `fw:deployed, fwx:done`). For every **other** batched ticket you MUST do the equivalent yourself with the API call above — both removing `fw:plan-posted` (or they get re-dispatched) **and** adding `fw:deployed` (or they never reach verification). Removing the label without adding `fw:deployed` is exactly how batched tickets fell out of the verify step.
 
 ---
 

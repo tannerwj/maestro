@@ -61,6 +61,7 @@
 | K8s | 10.3.160.0/23 | Kubernetes |
 | PCIApp | 10.3.110.0/24 | PCI application servers |
 | PCIdb | 10.3.111.0/24 | PCI databases |
+| AWS Tunnel | — | LV ↔ AWS traffic (tunnel.22/23). Use this zone for all lvFWs rules targeting AWS destinations. |
 
 ### SLC — Salt Lake City DC (Test/Stage)
 - **Device Group**: slcFWs
@@ -107,11 +108,21 @@ Search existing rules for the username to determine their access method. Look fo
 
 **Address objects**: Use the hostname if known (e.g., `lvLogstash7`, `lvK8sGrafana`). For IPs without a hostname, use `site-subnet-purpose` (e.g., `lv-10.3.10.36`). For FQDNs, use the hostname portion (e.g., `fraud-th-redshift-workgroup`).
 
+**Prefer address groups over subnets**: When a request references a group of hosts (e.g., "K8s", "App servers", "DB servers"), use the existing address group — not a subnet object. Grep `address-groups.md` in the relevant device group and `Shared` to find the right group. Only use a full subnet object if the request explicitly specifies the entire subnet needs access.
+
 **Security rules**: Match existing patterns in the device group. Common patterns:
 - VPN rules: `VPN AWS <resource>`, `VPN_AWS_<Username>`, `VPN <env> <resource>`
 - General: `<requester-lastname>-<destination-purpose>-<port>` (e.g., `cluff-redshift-5439`)
 
-**Service objects**: Prefer existing service objects (e.g., `application-default`, `service-https`, `service-http`). Only create a new service object if the port is non-standard and no existing object matches.
+**Application-first rule design**: Always prefer application-based matching over port-based service objects. Set `service=["any"]` and specify the application. Common mappings:
+- TCP 443 → application `ssl`
+- TCP 80 → application `web-browsing`
+- TCP 22 → application `ssh`
+- TCP 3306 → application `mysql`
+- TCP 5432 → application `postgresql`
+- TCP 53 / UDP 53 → application `dns`
+
+Only fall back to service objects for non-standard ports with no matching PAN-OS application.
 
 ---
 
@@ -141,6 +152,6 @@ Business approval (Result: Approve) means the requester's manager has already si
 
 - **Never** skip the approval request before making Panorama changes. Always post the change plan first and wait for operator approval.
 - **Never** commit+push to production device groups (lvFWs, slcFWs) without explicit approval.
-- **Always** check for an existing rule that already covers the traffic before creating a new one.
+- **Always** check for an existing rule that already covers the traffic before creating a new one. A rule only "covers" a flow if **every** match condition passes — not just Source/Dest Address and Application. `Address = any` does not make a rule a wildcard: the **Source User** and **Category** (URL-category) columns independently gate it, and so do **Negate Source/Dest**, **Schedule**, and **Disabled**. Concluding "already allowed" after checking only zone/address/app is the exact mistake that closed #785 (missed Source User) and #788 (missed URL Category) incorrectly. When in doubt — especially when a non-empty Category whose membership you can't verify is the only thing that would make a rule match — treat the flow as NOT covered and plan the change.
 - If the source/destination description is vague (e.g., "Prod App servers"), use the subnet map to resolve the specific IPs/subnets before drafting.
 - For user-based requests (User field populated, no Source Address), search existing rules for the user to determine their VPN type before assuming PRVHQ/Users.
