@@ -135,8 +135,16 @@ func MatchesFilterWithPrefix(issue domain.Issue, filter config.FilterConfig, pre
 
 	if len(filter.States) > 0 {
 		match := false
+		normalizedIssueState := issue.State
+		if strings.EqualFold(normalizedIssueState, "opened") {
+			normalizedIssueState = "open"
+		}
 		for _, state := range filter.States {
-			if strings.EqualFold(issue.State, state) {
+			filterState := state
+			if strings.EqualFold(filterState, "opened") {
+				filterState = "open"
+			}
+			if strings.EqualFold(normalizedIssueState, filterState) {
 				match = true
 				break
 			}

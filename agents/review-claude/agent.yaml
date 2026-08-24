@@ -7,7 +7,7 @@ prompt: prompt.md
 approval_policy: auto
 max_concurrent: 2
 claude:
-  model: claude-opus-4-6
+  model: claude-fable-5
   reasoning: high
 context_files:
   - context.md

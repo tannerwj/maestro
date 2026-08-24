@@ -28,9 +28,9 @@ sources:
     agent_type: fw-research
     poll_interval: 30s
     on_complete:
-      add_labels: [fw:plan-posted]
+      add_labels: [fw:plan-posted, fwr:done]
     on_failure:
-      add_labels: [fw:needs-attention]
+      add_labels: [fw:needs-attention, fwr:failed]
 
   - name: fw-execute
     display_group: Firewall Execute
@@ -46,10 +46,10 @@ sources:
     poll_interval: 30s
     on_complete:
       remove_labels: [fw:plan-posted]
-      add_labels: [fw:deployed]
+      add_labels: [fw:deployed, fwx:done]
     on_failure:
       remove_labels: [fw:plan-posted]
-      add_labels: [fw:needs-attention]
+      add_labels: [fw:needs-attention, fwx:failed]
 
   - name: fw-verify
     display_group: Firewall Verify
@@ -66,8 +66,9 @@ sources:
     max_attempts: 1
     on_complete:
       remove_labels: [fw:deployed]
+      add_labels: [fwv:done]
     on_failure:
-      add_labels: [fw:needs-attention]
+      add_labels: [fw:needs-attention, fwv:failed]
 
 agent_types:
   - name: fw-research
