@@ -213,7 +213,10 @@ func (s *Store) LoadReadOnly() (Snapshot, error) {
 }
 
 func (s *Store) Save(snapshot Snapshot) error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
 
@@ -305,7 +308,11 @@ func (s *Store) rotateBackups() error {
 	for i := backupCount - 1; i >= 1; i-- {
 		current := s.backupPath(i)
 		next := s.backupPath(i + 1)
-		if err := os.Rename(current, next); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := os.Rename(current, next); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		} else if err := os.Chmod(next, 0o600); err != nil {
 			return err
 		}
 	}
@@ -331,11 +338,14 @@ func copyFile(source string, destination string) error {
 	}
 	defer input.Close()
 
-	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
 	defer output.Close()
+	if err := output.Chmod(0o600); err != nil {
+		return err
+	}
 
 	if _, err := io.Copy(output, input); err != nil {
 		return err

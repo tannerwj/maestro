@@ -52,24 +52,23 @@ func (m *Manager) PrepareClone(ctx context.Context, issue domain.Issue, agentNam
 	if err := os.MkdirAll(m.root, 0o755); err != nil {
 		return Prepared{}, err
 	}
+	repoURL, err := cloneRepoURL(issue)
+	if err != nil {
+		return Prepared{}, err
+	}
 
 	// Reuse existing workspace if it contains a valid git repo.
 	if isGitRepo(prepared.Path) {
 		if !isGitRepoHealthy(ctx, prepared.Path) {
 			// Repo is corrupt — safe to remove and re-clone.
 			_ = os.RemoveAll(prepared.Path)
-		} else if err := reuseWorkspace(ctx, prepared.Path, prepared.Branch, m.gitLabHost, m.gitLabToken); err != nil {
+		} else if err := reuseWorkspace(ctx, prepared.Path, prepared.Branch, repoURL, m.gitLabHost, m.gitLabToken); err != nil {
 			// Repo is healthy but fetch/checkout failed (network, auth, conflict).
 			// Preserve the workspace and return the error — don't destroy local work.
 			return Prepared{}, fmt.Errorf("reuse workspace %s: %w", prepared.Path, err)
 		} else {
 			return prepared, nil
 		}
-	}
-
-	repoURL, err := cloneRepoURL(issue)
-	if err != nil {
-		return Prepared{}, err
 	}
 
 	if err := resetWorkspacePath(prepared.Path); err != nil {
@@ -115,12 +114,30 @@ func isGitRepoHealthy(ctx context.Context, path string) bool {
 	return runGit(ctx, path, "rev-parse", "--git-dir") == nil
 }
 
-func reuseWorkspace(ctx context.Context, path string, branch string, gitLabHost string, gitLabToken string) error {
+func reuseWorkspace(ctx context.Context, path string, branch string, repoURL string, gitLabHost string, gitLabToken string) error {
+	remoteURL, err := configuredOriginURL(ctx, path)
+	if err != nil {
+		return fmt.Errorf("read existing workspace origin: %w", err)
+	}
+	if remoteURL != repoURL {
+		return fmt.Errorf("existing workspace origin does not match requested repository: %q", path)
+	}
 	// Fetch latest from origin, with auth only for matching GitLab HTTPS remotes.
 	if err := fetchWorkspaceOrigin(ctx, path, gitLabHost, gitLabToken); err != nil {
 		return err
 	}
 	return checkoutOrCreateBranch(ctx, path, branch)
+}
+
+func configuredOriginURL(ctx context.Context, path string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "config", "--get", "remote.origin.url")
+	cmd.Dir = path
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git config remote.origin.url: %w: %s", err, redact.String(strings.TrimSpace(string(output))))
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 func (m *Manager) PrepareEmpty(issue domain.Issue) (Prepared, error) {
@@ -183,18 +200,12 @@ func (m *Manager) PopulateHarnessConfig(workspacePath string, claudeDir string, 
 
 func WorkspaceKey(identifier string) string {
 	var b strings.Builder
-	for _, r := range identifier {
+	for _, c := range []byte(identifier) {
 		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '.' || r == '_' || r == '-':
-			b.WriteRune(r)
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-':
+			b.WriteByte(c)
 		default:
-			b.WriteByte('_')
+			fmt.Fprintf(&b, "_%02X", c)
 		}
 	}
 	return b.String()

@@ -431,8 +431,10 @@ func (r *claudeRun) runCommand(binary string, runner harness.ProcessRunner, prom
 		}
 	}()
 
+	stderrDone := make(chan struct{})
 	go func() {
 		_, _ = io.Copy(r.stderr, stderr)
+		close(stderrDone)
 	}()
 
 	var resultText string
@@ -444,6 +446,7 @@ func (r *claudeRun) runCommand(binary string, runner harness.ProcessRunner, prom
 				break
 			}
 			_ = cmd.Process.Kill()
+			<-stderrDone
 			_ = cmd.Wait()
 			return outcome, err
 		}
@@ -463,6 +466,7 @@ func (r *claudeRun) runCommand(binary string, runner harness.ProcessRunner, prom
 		r.writeStreamEvent(event)
 	}
 
+	<-stderrDone
 	waitErr := cmd.Wait()
 	if outcome.approval != nil {
 		return outcome, nil

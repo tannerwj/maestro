@@ -10,14 +10,14 @@ import (
 
 func TestWorkspaceKey(t *testing.T) {
 	got := workspace.WorkspaceKey("team/project#42")
-	if got != "team_project_42" {
+	if got != "team_2Fproject_2342" {
 		t.Fatalf("workspace key = %q", got)
 	}
 }
 
 func TestBranchName(t *testing.T) {
 	got := workspace.BranchName("coder", "team/project#42")
-	if got != "maestro/coder/team_project_42" {
+	if got != "maestro/coder/team_2Fproject_2342" {
 		t.Fatalf("branch name = %q", got)
 	}
 }
@@ -45,10 +45,10 @@ func TestManagerPreviewClone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preview clone: %v", err)
 	}
-	if got.Path != filepath.Join(root, "team_project_42") {
-		t.Fatalf("preview path = %q, want %q", got.Path, filepath.Join(root, "team_project_42"))
+	if got.Path != filepath.Join(root, "team_2Fproject_2342") {
+		t.Fatalf("preview path = %q, want %q", got.Path, filepath.Join(root, "team_2Fproject_2342"))
 	}
-	if got.Branch != "maestro/coder/team_project_42" {
+	if got.Branch != "maestro/coder/team_2Fproject_2342" {
 		t.Fatalf("preview branch = %q", got.Branch)
 	}
 }

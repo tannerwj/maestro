@@ -27,3 +27,20 @@ test("operator smoke covers overview, workflow, and config studio", async ({ pag
   await expect(page).toHaveURL(/\/packs$/);
   await expect(page.getByRole("heading", { name: "Existing packs" })).toBeVisible();
 });
+
+test("cross-origin control request is rejected while same-origin request works", async ({ request }) => {
+  const forged = await request.post("/api/v1/poll", {
+    headers: { Origin: "https://attacker.invalid", "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  expect(forged.status()).toBe(403);
+
+  const local = await request.post("/api/v1/poll", {
+    headers: { Origin: "http://127.0.0.1:8746" },
+  });
+  expect(local.status()).toBe(200);
+
+  const rebound = await request.get("/api/v1/status", {
+    headers: { Host: "attacker.invalid:8746" },
+  });
+  expect(rebound.status()).toBe(403);
+});

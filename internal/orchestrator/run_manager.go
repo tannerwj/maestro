@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -186,17 +185,23 @@ func (r *runManager) prepareAndStart(ctx context.Context, run *domain.AgentRun) 
 	defer s.clearRunOutput(run.ID)
 	lineageKey := runLineageKey(s.source.Name, issue, prepared.Path)
 
-	var stdout, stderr bytes.Buffer
-	defer func() {
-		s.saveRunLogs(run.ID, stdout.Bytes(), stderr.Bytes())
-	}()
+	stdoutLog, err := s.openRunLog(run.ID, "stdout.log")
+	if err != nil {
+		return fmt.Errorf("open run stdout log: %w", err)
+	}
+	defer stdoutLog.Close()
+	stderrLog, err := s.openRunLog(run.ID, "stderr.log")
+	if err != nil {
+		return fmt.Errorf("open run stderr log: %w", err)
+	}
+	defer stderrLog.Close()
 	stdoutWriter := &runOutputWriter{
-		target:  &stdout,
+		target:  stdoutLog,
 		onWrite: func() { s.markRunActivity(run.ID) },
 		append:  func(p []byte) { s.appendRunOutput(run.ID, "stdout", p) },
 	}
 	stderrWriter := &runOutputWriter{
-		target:  &stderr,
+		target:  stderrLog,
 		onWrite: func() { s.markRunActivity(run.ID) },
 		append:  func(p []byte) { s.appendRunOutput(run.ID, "stderr", p) },
 	}
@@ -250,11 +255,12 @@ func (r *runManager) prepareAndStart(ctx context.Context, run *domain.AgentRun) 
 
 	if err := active.Wait(); err != nil {
 		s.runHookBestEffort(context.Background(), s.cfg.Hooks.AfterRun, prepared.Path, run, "after_run")
+		stdoutTail, stderrTail := s.runOutputTails(run.ID)
 		return fmt.Errorf(
 			"agent exited with error: %w stderr=%s stdout=%s",
 			sanitizeError(err),
-			sanitizeOutput(stderr.String()),
-			sanitizeOutput(stdout.String()),
+			sanitizeOutput(stderrTail),
+			sanitizeOutput(stdoutTail),
 		)
 	}
 

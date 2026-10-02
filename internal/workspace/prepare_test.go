@@ -29,7 +29,7 @@ func TestPrepareClonesRepositoryAndCreatesBranch(t *testing.T) {
 	}
 
 	head := gitOutput(t, prepared.Path, "branch", "--show-current")
-	if head != "maestro/coder/team_project_42" {
+	if head != "maestro/coder/team_2Fproject_2342" {
 		t.Fatalf("branch = %q", head)
 	}
 
@@ -287,7 +287,7 @@ func TestPrepareCloneReusesExistingWorkspace(t *testing.T) {
 	}
 
 	branch := gitOutput(t, second.Path, "branch", "--show-current")
-	if branch != "maestro/coder/team_project_50" {
+	if branch != "maestro/coder/team_2Fproject_2350" {
 		t.Fatalf("branch = %q after reuse", branch)
 	}
 }
@@ -358,7 +358,7 @@ func TestPrepareCloneFallsBackOnCorruptGitRepo(t *testing.T) {
 	}
 
 	branch := gitOutput(t, prepared.Path, "branch", "--show-current")
-	if branch != "maestro/coder/team_project_51" {
+	if branch != "maestro/coder/team_2Fproject_2351" {
 		t.Fatalf("branch = %q after fallback clone", branch)
 	}
 }

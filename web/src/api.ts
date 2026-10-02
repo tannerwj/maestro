@@ -33,7 +33,7 @@ function bootstrapAPIKey(): string {
   return window.sessionStorage.getItem(apiKeyStorageKey)?.trim() || "";
 }
 
-let apiKey = bootstrapAPIKey();
+const apiKey = bootstrapAPIKey();
 
 function authHeaders(headers?: HeadersInit): Headers {
   const merged = new Headers(headers);
@@ -81,15 +81,53 @@ export async function fetchDashboardData() {
 }
 
 export function openStream(onUpdate: () => void, onError?: () => void) {
-  const path = apiKey === "" ? "/api/v1/stream" : `/api/v1/stream?api_key=${encodeURIComponent(apiKey)}`;
-  const stream = new EventSource(path);
-  stream.addEventListener("update", () => {
-    onUpdate();
-  });
-  stream.onerror = () => {
-    onError?.();
-  };
-  return stream;
+	const controller = new AbortController();
+	let closed = false;
+	let retryTimer: number | undefined;
+
+	async function connect() {
+		try {
+			const response = await fetch("/api/v1/stream", {
+				headers: authHeaders({ Accept: "text/event-stream" }),
+				signal: controller.signal,
+				cache: "no-store",
+			});
+			if (!response.ok || !response.body) {
+				throw new Error(`stream request failed: ${response.status}`);
+			}
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let pending = "";
+			while (!closed) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				pending += decoder.decode(value, { stream: true });
+				let boundary = pending.indexOf("\n\n");
+				while (boundary >= 0) {
+					const event = pending.slice(0, boundary);
+					pending = pending.slice(boundary + 2);
+					if (event.split("\n").some((line) => line === "event: update")) onUpdate();
+					boundary = pending.indexOf("\n\n");
+				}
+			}
+		} catch {
+			if (closed) return;
+		} finally {
+			if (!closed) {
+				onError?.();
+				retryTimer = window.setTimeout(() => void connect(), 1000);
+			}
+		}
+	}
+
+	void connect();
+	return {
+		close() {
+			closed = true;
+			controller.abort();
+			if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+		},
+	};
 }
 
 export async function resolveApproval(requestId: string, action: "approve" | "reject") {

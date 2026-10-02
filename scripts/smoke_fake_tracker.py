@@ -176,6 +176,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, payload, headers={"X-Next-Page": ""})
             return
 
+        if path.startswith("projects/") and "/issues/" in path and path.endswith("/links"):
+            self.send_json(200, [])
+            return
+
         if path.startswith("projects/") and "/issues/" in path:
             project_part, iid_part = path[len("projects/"):].split("/issues/", 1)
             project = urllib.parse.unquote(project_part)

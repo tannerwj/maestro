@@ -295,6 +295,8 @@ agent_defaults:
 # - Docker is selected per `agent_type`, so one Maestro instance can mix host-run and Docker-run agents
 #   across different sources.
 # - The prepared host workspace is bind-mounted into the container so git changes remain visible on the host.
+# - Claude `approval_policy: manual` currently reruns an approved turn with `bypassPermissions`;
+#   it does not enforce approval on every subsequent tool action. See FINDINGS.md (S2).
 # - Prefer `docker.secrets` and `docker.tools` for explicit allowlists. Raw `docker.env_passthrough`
 #   and `docker.mounts` remain supported for compatibility.
 # - Docker defaults are hardened: no-new-privileges, read-only rootfs, cap-drop ALL, and tmpfs /tmp.
@@ -305,10 +307,11 @@ agent_defaults:
 # - `maestro doctor` warns when a Docker image is not digest-pinned; set `docker.image_pin_mode: require`
 #   to make digest pinning mandatory for a given agent type.
 # - `docker.network` still supports coarse `bridge` / `none` / `host` modes.
-# - `docker.network_policy` adds phase-2 Docker egress control:
+# - `docker.network_policy` offers network modes and proxy routing:
 #   `mode: none`, `mode: bridge`, or `mode: allowlist` with explicit allowed hosts/domains.
-# - `mode: allowlist` currently scopes HTTP/HTTPS egress through a Maestro-managed proxy and rejects
-#   conflicting proxy env overrides because Maestro owns those variables in that mode.
+# - `mode: allowlist` routes proxy-aware HTTP/HTTPS clients through a Maestro-managed proxy.
+#   It does not block direct sockets on Docker bridge; use `none` or an external firewall for isolation.
+#   Conflicting proxy env overrides are rejected because Maestro owns those variables in that mode.
 # - Do not mount your full home directory by default; prefer narrow `docker.secrets` / `docker.tools`
 #   entries or minimal auth presets.
 # - Claude can use direct API keys (`docker.auth.mode: claude-api-key`) or bearer-token proxy auth
@@ -587,11 +590,13 @@ sources:
 
 Maestro creates isolated workspaces per issue under `workspace.root`:
 
-- **Path**: `{workspace.root}/{sanitized-issue-identifier}` (e.g., `var/workspaces/TAN-42`)
-- **Branch**: `maestro/{agent-name}/{sanitized-issue-identifier}`
-- **Reuse**: if a workspace exists from a previous run, Maestro reuses it (fetches latest, checks out the agent branch). Agent's local commits are preserved across retries.
+- **Path**: `{workspace.root}/{encoded-issue-identifier}` (e.g., `var/workspaces/TAN-42`); punctuation and non-ASCII bytes are encoded to prevent different identifiers from sharing a path.
+- **Branch**: `maestro/{encoded-agent-name}/{encoded-issue-identifier}`.
+- **Reuse**: if a workspace exists from a previous run, Maestro verifies its Git origin, fetches latest, and checks out the agent branch. Agent's local commits are preserved across retries. An origin mismatch returns an error and preserves the directory.
 - **Fallback**: corrupt repos are detected and re-cloned. Transient failures (network, auth) preserve the workspace and return an error.
 - **Cross-instance**: if a different Maestro instance picks up the same issue, it does a fresh clone but checks out the existing remote branch — prior pushed work is preserved.
+
+Workspaces created before the identifier encoding change are left in place. Preserve and inspect local work before moving it to the new path; see [FINDINGS.md](FINDINGS.md) for the migration and rollback steps.
 
 ## CLI Commands
 
@@ -609,7 +614,7 @@ maestro cleanup workspaces --config maestro.yaml     # remove non-active workspa
 
 ## Run Logs
 
-Agent stdout/stderr is persisted after each run:
+Agent stdout/stderr streams to private files during the run. Each stream is capped at 16 MiB, with a truncation marker if output exceeds the cap:
 
 ```
 {state.dir}/runs/{run-id}/stdout.log
@@ -617,6 +622,8 @@ Agent stdout/stderr is persisted after each run:
 ```
 
 Review what an agent did: `cat var/state/runs/run-20260321-*/stdout.log`
+
+In a multi-source configuration, run logs are under `{state.dir}/{source-name}/runs/`. Raw logs may contain anything printed by an agent, so keep the state directory accessible only to the Maestro account.
 
 ## TUI
 

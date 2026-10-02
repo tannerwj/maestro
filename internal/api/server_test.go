@@ -23,6 +23,12 @@ import (
 	"github.com/tjohnson/maestro/internal/orchestrator"
 )
 
+func newLocalRequest(method string, target string, body io.Reader) *http.Request {
+	request := httptest.NewRequest(method, target, body)
+	request.Host = "127.0.0.1:8742"
+	return request
+}
+
 type fakeRuntime struct {
 	snapshot  orchestrator.Snapshot
 	decisions []string
@@ -114,7 +120,7 @@ func TestStatusEndpointReturnsSnapshotAndConfig(t *testing.T) {
 
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request := newLocalRequest(http.MethodGet, "/api/v1/status", nil)
 	authorizeRequest(server, request)
 
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -371,8 +377,8 @@ func TestStatusEndpointEncodesRichSnapshotFields(t *testing.T) {
 						TokensOut:   &tokensOut,
 						TotalTokens: &totalTokens,
 					},
-					PendingApprovals:       1,
-					PendingMessages:        1,
+					PendingApprovals: 1,
+					PendingMessages:  1,
 				},
 			},
 			RecentEvents: []orchestrator.Event{
@@ -393,7 +399,7 @@ func TestStatusEndpointEncodesRichSnapshotFields(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request := newLocalRequest(http.MethodGet, "/api/v1/status", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -444,7 +450,7 @@ func TestApprovalActionEndpointResolvesDecision(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/approvals/approval-1/approve", nil)
+	request := newLocalRequest(http.MethodPost, "/api/v1/approvals/approval-1/approve", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -464,7 +470,7 @@ func TestRunStopEndpointStopsRun(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/runs/run-1/stop", nil)
+	request := newLocalRequest(http.MethodPost, "/api/v1/runs/run-1/stop", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -491,7 +497,7 @@ func TestForcePollEndpointRequestsAllSources(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/poll", nil)
+	request := newLocalRequest(http.MethodPost, "/api/v1/poll", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -517,7 +523,7 @@ func TestSourceForcePollEndpointRequestsSingleSource(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/sources/gitlab-a/poll", nil)
+	request := newLocalRequest(http.MethodPost, "/api/v1/sources/gitlab-a/poll", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -576,7 +582,7 @@ func TestResourceEndpointsReturnCollections(t *testing.T) {
 		{path: "/api/v1/messages", wantCount: `"count": 1`, wantPieces: []string{`"request_id": "message-1"`, `"kind": "before_work"`}},
 	} {
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, test.path, nil)
+		request := newLocalRequest(http.MethodGet, test.path, nil)
 		authorizeRequest(server, request)
 		server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -603,7 +609,7 @@ func TestMessageReplyEndpointResolvesReply(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/message-1/reply", strings.NewReader(`{"reply":"start"}`))
+	request := newLocalRequest(http.MethodPost, "/api/v1/messages/message-1/reply", strings.NewReader(`{"reply":"start"}`))
 	request.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -624,7 +630,7 @@ func TestMessageReplyEndpointRejectsEmptyReply(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/message-1/reply", strings.NewReader(`{"reply":"   "}`))
+	request := newLocalRequest(http.MethodPost, "/api/v1/messages/message-1/reply", strings.NewReader(`{"reply":"   "}`))
 	request.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -642,7 +648,7 @@ func TestDashboardServesHTML(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), runtime)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := newLocalRequest(http.MethodGet, "/", nil)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
@@ -837,7 +843,7 @@ server:
 
 	body := []byte(`{"original_name":"code-pr","name":"code-pr","description":"Updated description","instance_name":"code-pr","harness":"claude-code","workspace":"git-clone","approval_policy":"auto","max_concurrent":2,"tools":["git","make"],"skills":["narrow diffs","verification"],"env_keys":[],"prompt_body":"Updated prompt","context_body":"Updated context"}`)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/packs/save", bytes.NewReader(body))
+	request := newLocalRequest(http.MethodPost, "/api/v1/packs/save", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -918,7 +924,7 @@ server:
 
 	body := []byte(`{"name":"../../escape","description":"Updated description","instance_name":"escape","harness":"claude-code","workspace":"git-clone","approval_policy":"auto","max_concurrent":1,"tools":[],"skills":[],"env_keys":[],"prompt_body":"Updated prompt","context_body":"Updated context"}`)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/packs/save", bytes.NewReader(body))
+	request := newLocalRequest(http.MethodPost, "/api/v1/packs/save", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
@@ -948,7 +954,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	server := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), &fakeRuntime{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/config/raw", nil)
+	request := newLocalRequest(http.MethodGet, "/api/v1/config/raw", nil)
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -959,7 +965,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	validateRecorder := httptest.NewRecorder()
-	validateRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":`+strconvQuote(raw)+`}`))
+	validateRequest := newLocalRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":`+strconvQuote(raw)+`}`))
 	validateRequest.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, validateRequest)
 	server.httpServer.Handler.ServeHTTP(validateRecorder, validateRequest)
@@ -972,7 +978,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 
 	updated := strings.Replace(raw, "gitlab-a", "gitlab-b", 1)
 	saveRecorder := httptest.NewRecorder()
-	saveRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/save", strings.NewReader(`{"yaml":`+strconvQuote(updated)+`}`))
+	saveRequest := newLocalRequest(http.MethodPost, "/api/v1/config/save", strings.NewReader(`{"yaml":`+strconvQuote(updated)+`}`))
 	saveRequest.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, saveRequest)
 	server.httpServer.Handler.ServeHTTP(saveRecorder, saveRequest)
@@ -988,7 +994,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	dryRunRecorder := httptest.NewRecorder()
-	dryRunRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/dry-run", strings.NewReader(`{"yaml":`+strconvQuote(strings.Replace(updated, "gitlab-b", "gitlab-c", 1))+`}`))
+	dryRunRequest := newLocalRequest(http.MethodPost, "/api/v1/config/dry-run", strings.NewReader(`{"yaml":`+strconvQuote(strings.Replace(updated, "gitlab-b", "gitlab-c", 1))+`}`))
 	dryRunRequest.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, dryRunRequest)
 	server.httpServer.Handler.ServeHTTP(dryRunRecorder, dryRunRequest)
@@ -1000,7 +1006,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	backupsRecorder := httptest.NewRecorder()
-	backupsRequest := httptest.NewRequest(http.MethodGet, "/api/v1/config/backups", nil)
+	backupsRequest := newLocalRequest(http.MethodGet, "/api/v1/config/backups", nil)
 	authorizeRequest(server, backupsRequest)
 	server.httpServer.Handler.ServeHTTP(backupsRecorder, backupsRequest)
 	if backupsRecorder.Code != http.StatusOK {
@@ -1025,7 +1031,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 		t.Fatal("expected backup file to exist after save")
 	}
 	backupDetailRecorder := httptest.NewRecorder()
-	backupDetailRequest := httptest.NewRequest(http.MethodGet, "/api/v1/config/backups/"+backupName, nil)
+	backupDetailRequest := newLocalRequest(http.MethodGet, "/api/v1/config/backups/"+backupName, nil)
 	authorizeRequest(server, backupDetailRequest)
 	server.httpServer.Handler.ServeHTTP(backupDetailRecorder, backupDetailRequest)
 	if backupDetailRecorder.Code != http.StatusOK {
@@ -1036,7 +1042,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	restoreRecorder := httptest.NewRecorder()
-	restoreRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/backups/"+backupName, nil)
+	restoreRequest := newLocalRequest(http.MethodPost, "/api/v1/config/backups/"+backupName, nil)
 	authorizeRequest(server, restoreRequest)
 	server.httpServer.Handler.ServeHTTP(restoreRecorder, restoreRequest)
 	if restoreRecorder.Code != http.StatusOK {
@@ -1051,7 +1057,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	createBackupRecorder := httptest.NewRecorder()
-	createBackupRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/backups/create", nil)
+	createBackupRequest := newLocalRequest(http.MethodPost, "/api/v1/config/backups/create", nil)
 	authorizeRequest(server, createBackupRequest)
 	server.httpServer.Handler.ServeHTTP(createBackupRecorder, createBackupRequest)
 	if createBackupRecorder.Code != http.StatusOK {
@@ -1062,7 +1068,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 	}
 
 	invalidSaveRecorder := httptest.NewRecorder()
-	invalidSaveRequest := httptest.NewRequest(http.MethodPost, "/api/v1/config/save", strings.NewReader(`{"yaml":"sources:\n  - name: broken\n    tracker: gitlab\n"}`))
+	invalidSaveRequest := newLocalRequest(http.MethodPost, "/api/v1/config/save", strings.NewReader(`{"yaml":"sources:\n  - name: broken\n    tracker: gitlab\n"}`))
 	invalidSaveRequest.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, invalidSaveRequest)
 	server.httpServer.Handler.ServeHTTP(invalidSaveRecorder, invalidSaveRequest)
@@ -1084,7 +1090,7 @@ func TestConfigRawValidateAndSaveEndpoints(t *testing.T) {
 func TestConfigValidateRejectsBrokenYAML(t *testing.T) {
 	server := New(&config.Config{Server: config.ServerConfig{Enabled: true, Host: "127.0.0.1", Port: 8742}}, slog.New(slog.NewTextHandler(io.Discard, nil)), &fakeRuntime{})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":"sources:\n  - name: bad\n    tracker: gitlab\n"}`))
+	request := newLocalRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":"sources:\n  - name: bad\n    tracker: gitlab\n"}`))
 	request.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -1145,7 +1151,7 @@ logging:
 `
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":`+strconvQuote(raw)+`}`))
+	request := newLocalRequest(http.MethodPost, "/api/v1/config/validate", strings.NewReader(`{"yaml":`+strconvQuote(raw)+`}`))
 	request.Header.Set("Content-Type", "application/json")
 	authorizeRequest(server, request)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
@@ -1165,7 +1171,7 @@ func TestAPIEndpointsRequireAuthorization(t *testing.T) {
 	server := New(&config.Config{Server: config.ServerConfig{Enabled: true, Host: "0.0.0.0", Port: 8742}}, slog.New(slog.NewTextHandler(io.Discard, nil)), &fakeRuntime{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request := newLocalRequest(http.MethodGet, "/api/v1/status", nil)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -1180,7 +1186,7 @@ func TestLoopbackAPIAllowsUnauthenticatedRequests(t *testing.T) {
 	server := New(&config.Config{Server: config.ServerConfig{Enabled: true, Host: "127.0.0.1", Port: 8742}}, slog.New(slog.NewTextHandler(io.Discard, nil)), &fakeRuntime{})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request := newLocalRequest(http.MethodGet, "/api/v1/status", nil)
 	server.httpServer.Handler.ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -45,6 +46,7 @@ type runtimeView interface {
 type Server struct {
 	addr          string
 	apiKey        string
+	loopbackOnly  bool
 	logger        *slog.Logger
 	runtime       runtimeView
 	configSummary ops.ConfigSummary
@@ -363,6 +365,7 @@ func New(cfg *config.Config, logger *slog.Logger, runtime runtimeView) *Server {
 	server := &Server{
 		addr:          net.JoinHostPort(cfg.Server.Host, fmt.Sprintf("%d", cfg.Server.Port)),
 		apiKey:        apiKey,
+		loopbackOnly:  !requiresAPIKey(cfg.Server.Host),
 		logger:        logger,
 		runtime:       runtime,
 		configSummary: ops.SummarizeConfig(cfg),
@@ -428,7 +431,7 @@ func generateAPIKey() string {
 
 func requiresAPIKey(host string) bool {
 	trimmed := strings.Trim(strings.TrimSpace(host), "[]")
-	if trimmed == "" || strings.EqualFold(trimmed, "localhost") {
+	if strings.EqualFold(trimmed, "localhost") {
 		return false
 	}
 	ip := net.ParseIP(trimmed)
@@ -440,8 +443,16 @@ func requiresAPIKey(host string) bool {
 
 func (s *Server) withAPIAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.loopbackOnly && !isLoopbackHTTPHost(r.Host) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "invalid loopback host"})
+			return
+		}
 		if !strings.HasPrefix(r.URL.Path, "/api/v1/") || r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions && !sameOriginRequest(r) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"error": "cross-origin request rejected"})
 			return
 		}
 		if s.authorized(r) {
@@ -452,15 +463,43 @@ func (s *Server) withAPIAuth(next http.Handler) http.Handler {
 	})
 }
 
+func isLoopbackHTTPHost(hostPort string) bool {
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		host = hostPort
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func sameOriginRequest(r *http.Request) bool {
+	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if !strings.EqualFold(parsed.Host, r.Host) {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
 func (s *Server) authorized(r *http.Request) bool {
 	if strings.TrimSpace(s.apiKey) == "" {
 		return true
 	}
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(auth, "Bearer ") && strings.TrimSpace(strings.TrimPrefix(auth, "Bearer ")) == s.apiKey {
-		return true
-	}
-	if strings.TrimSpace(r.URL.Query().Get("api_key")) == s.apiKey {
 		return true
 	}
 	return false

@@ -268,14 +268,14 @@ def create_marker(path):
 
 def handle_turn(cwd, turn_number, prompt, sandbox_policy):
     key = basename(cwd)
-    if key == "team_project_101":
+    if key == "team_2Fproject_23101":
         if turn_number == 1:
             create_marker(os.path.join(ARTIFACTS, "stage1-turn1.txt"))
             if os.path.exists(os.path.join(cwd, ".codex", "LOCAL_PACK.txt")):
                 create_marker(os.path.join(ARTIFACTS, "stage1-local-pack.txt"))
         elif turn_number == 2:
             create_marker(os.path.join(ARTIFACTS, "stage1-turn2.txt"))
-    elif key == "team_project_102":
+    elif key == "team_2Fproject_23102":
         create_marker(os.path.join(ARTIFACTS, "repo-pack.txt"))
         if os.path.exists(os.path.join(cwd, ".codex", "REPO_PACK.txt")):
             create_marker(os.path.join(ARTIFACTS, "repo-pack-config.txt"))
@@ -388,12 +388,14 @@ def main():
     key = os.path.basename(workdir.rstrip("/"))
     log({"argv": sys.argv[1:], "workdir": workdir, "prompt": prompt})
 
-    if key == "team_project_101":
+    if key == "team_2Fproject_23101":
         create_marker("stage2-claude.txt")
-    elif key == "team_project_201":
+    elif key == "team_2Fproject_23201":
         create_marker("epic-none.txt")
         if not os.path.exists(os.path.join(workdir, ".git")):
             create_marker("epic-none-no-git.txt")
+        for _ in range(17):
+            sys.stderr.write("x" * (1 << 20))
 
     sys.stdout.write('{"type":"assistant"}\n')
     sys.stdout.write('{"type":"result","result":"CLAUDE_OK"}\n')
@@ -612,14 +614,18 @@ fi
 export SMOKE_VERIFY_STATE="${state_json}"
 export SMOKE_VERIFY_ARTIFACTS="${artifacts_root}"
 export SMOKE_VERIFY_WORKSPACE="${workspace_root}"
+export SMOKE_VERIFY_STATE_ROOT="${state_root}"
 python3 - <<'PY'
 import json
 import os
+import glob
+import stat
 import sys
 
 state_path = os.environ["SMOKE_VERIFY_STATE"]
 artifacts = os.environ["SMOKE_VERIFY_ARTIFACTS"]
 workspace_root = os.environ["SMOKE_VERIFY_WORKSPACE"]
+state_root = os.environ["SMOKE_VERIFY_STATE_ROOT"]
 with open(state_path, "r", encoding="utf-8") as fh:
     state = json.load(fh)
 
@@ -650,10 +656,10 @@ with open(os.path.join(artifacts, "claude-events.jsonl"), "r", encoding="utf-8")
 def events_for_cwd(cwd_suffix, event_type):
     return [event for event in codex_events if event.get("event") == event_type and event.get("cwd", "").endswith(cwd_suffix)]
 
-stage1_threads = events_for_cwd("team_project_101", "thread_start")
+stage1_threads = events_for_cwd("team_2Fproject_23101", "thread_start")
 require(len(stage1_threads) == 1, f"stage1 threads={stage1_threads}")
 require(stage1_threads[0]["sandbox"] == "workspaceWrite", stage1_threads[0])
-stage1_turns = events_for_cwd("team_project_101", "turn_start")
+stage1_turns = events_for_cwd("team_2Fproject_23101", "turn_start")
 require(len(stage1_turns) == 2, f"stage1 turns={stage1_turns}")
 require("AgentUpper=STAGE-CODEX" in stage1_turns[0]["prompt"], stage1_turns[0]["prompt"])
 require("StateLower=open" in stage1_turns[0]["prompt"], stage1_turns[0]["prompt"])
@@ -663,14 +669,14 @@ require("ContainsCoding=yes" in stage1_turns[0]["prompt"], stage1_turns[0]["prom
 require("  local-pack-context" in stage1_turns[0]["prompt"], stage1_turns[0]["prompt"])
 require("Continuation turn 2 of 2" in stage1_turns[1]["prompt"], stage1_turns[1]["prompt"])
 
-repo_turns = events_for_cwd("team_project_102", "turn_start")
+repo_turns = events_for_cwd("team_2Fproject_23102", "turn_start")
 require(len(repo_turns) == 1, f"repo turns={repo_turns}")
 require("RepoPromptContext:" in repo_turns[0]["prompt"], repo_turns[0]["prompt"])
 require("repo-pack-context" in repo_turns[0]["prompt"], repo_turns[0]["prompt"])
 
 linear_threads = events_for_cwd("SMK-1", "thread_start")
 require(len(linear_threads) == 1, f"linear threads={linear_threads}")
-require(linear_threads[0]["sandbox"] == "dangerFullAccess", linear_threads[0])
+require(linear_threads[0]["sandbox"] == "danger-full-access", linear_threads[0])
 linear_turns = events_for_cwd("SMK-1", "turn_start")
 require(len(linear_turns) == 1, f"linear turns={linear_turns}")
 require(linear_turns[0]["sandbox_policy"] == {"type": "dangerFullAccess"}, linear_turns[0])
@@ -688,15 +694,15 @@ linear_args = cli_args_by_pid[linear_pid]
 require("model_reasoning_effort=high" in linear_args, linear_args)
 
 claude_by_workdir = {event["workdir"]: event for event in claude_events}
-review_claude = next(event for event in claude_events if event["workdir"].endswith("team_project_101"))
-epic_claude = next(event for event in claude_events if event["workdir"].endswith("team_project_201"))
+review_claude = next(event for event in claude_events if event["workdir"].endswith("team_2Fproject_23101"))
+epic_claude = next(event for event in claude_events if event["workdir"].endswith("team_2Fproject_23201"))
 require("--effort" in review_claude["argv"], review_claude["argv"])
 require("high" in review_claude["argv"], review_claude["argv"])
 require("--epic-extra" in epic_claude["argv"], epic_claude["argv"])
 require("--effort" in epic_claude["argv"], epic_claude["argv"])
 require("medium" in epic_claude["argv"], epic_claude["argv"])
 
-epic_workspace = os.path.join(workspace_root, "team_project_201")
+epic_workspace = os.path.join(workspace_root, "team_2Fproject_23201")
 linear_workspace = os.path.join(workspace_root, "SMK-1")
 require(os.path.exists(os.path.join(epic_workspace, "EPIC_NONE_OK.txt")) is False or True, "noop")
 require(not os.path.exists(os.path.join(epic_workspace, ".git")), "epic workspace unexpectedly has .git")
@@ -714,6 +720,17 @@ for marker in [
     "linear-dev-codex.txt",
 ]:
     require(os.path.exists(os.path.join(artifacts, marker)), f"missing artifact {marker}")
+
+epic_logs = glob.glob(os.path.join(state_root, "gitlab-epic-none", "runs", "*", "stderr.log"))
+require(len(epic_logs) == 1, f"expected one epic stderr log: {epic_logs}")
+with open(epic_logs[0], "rb") as fh:
+    contents = fh.read()
+require(len(contents) == (16 << 20) + len(b"\n[run log truncated at 16 MiB]\n"), f"unexpected capped log size: {len(contents)}")
+require(contents.endswith(b"\n[run log truncated at 16 MiB]\n"), "missing truncation marker")
+require(stat.S_IMODE(os.stat(epic_logs[0]).st_mode) == 0o600, "run log is not owner-only")
+require(stat.S_IMODE(os.stat(os.path.dirname(epic_logs[0])).st_mode) == 0o700, "run log dir is not owner-only")
+for backup in glob.glob(os.path.join(state_root, "*", "runs.json*")):
+    require(stat.S_IMODE(os.stat(backup).st_mode) == 0o600, f"state file is not owner-only: {backup}")
 PY
 
 echo "Hermetic smoke passed."

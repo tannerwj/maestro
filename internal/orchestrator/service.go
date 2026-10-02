@@ -408,8 +408,8 @@ func (s *Service) Snapshot() Snapshot {
 		runOutputs = append(runOutputs, RunOutputView{
 			RunID:      runID,
 			SourceName: s.source.Name,
-			StdoutTail: output.stdout.String(),
-			StderrTail: output.stderr.String(),
+			StdoutTail: sanitizeOutput(output.stdout.String()),
+			StderrTail: sanitizeOutput(output.stderr.String()),
 			UpdatedAt:  updatedAt,
 		})
 	}

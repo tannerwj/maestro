@@ -111,7 +111,7 @@ func ResolveRepoPack(workspacePath string, repoPackPath string) (*AgentPackConfi
 		return nil, err
 	}
 	promptPath := filepath.Join(packDir, "prompt.md")
-	if _, err := os.Stat(promptPath); err != nil {
+	if err := requireRegularFileNoSymlink(promptPath); err != nil {
 		return nil, fmt.Errorf("repo pack prompt %q: %w", promptPath, err)
 	}
 	contextFiles, err := collectPackContextFiles(filepath.Join(packDir, "context"))
@@ -244,14 +244,14 @@ func mergeAgentPack(agent *AgentTypeConfig, pack *AgentPackConfig) {
 
 func resolveOptionalPackDir(packDir string, name string) (string, error) {
 	path := filepath.Join(packDir, name)
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
 		return "", fmt.Errorf("stat pack %s dir: %w", name, err)
 	}
-	if !info.IsDir() {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", fmt.Errorf("pack %s path %q must be a directory", name, path)
 	}
 	return filepath.Clean(path), nil
@@ -345,25 +345,40 @@ func resolveRepoPackDir(workspacePath string, repoPackPath string) (string, erro
 		return "", fmt.Errorf("repo pack path %q must stay within the workspace", relative)
 	}
 	path := filepath.Join(workspacePath, relative)
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("repo pack dir %q: %w", path, err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("repo pack path %q must be a directory", path)
+	current := workspacePath
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return "", fmt.Errorf("repo pack dir %q: %w", current, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("repo pack path %q must be a directory without symlinks", current)
+		}
 	}
 	return filepath.Clean(path), nil
 }
 
+func requireRegularFileNoSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("must be a regular file without symlinks")
+	}
+	return nil
+}
+
 func collectPackContextFiles(contextDir string) ([]string, error) {
-	info, err := os.Stat(contextDir)
+	info, err := os.Lstat(contextDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("stat pack context dir %q: %w", contextDir, err)
 	}
-	if !info.IsDir() {
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return nil, fmt.Errorf("pack context path %q must be a directory", contextDir)
 	}
 	files := []string{}

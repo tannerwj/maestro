@@ -207,8 +207,9 @@ function App() {
 
   const filteredSourceNames = filteredSources.map((item) => item.config.name);
 
+  const runsById = new Map(runs.map((run) => [run.id, run]));
   const visibleApprovals = approvals.filter((approval) => {
-    const run = runs.find((item) => item.id === approval.run_id);
+    const run = runsById.get(approval.run_id ?? "");
     if (run && !filteredSourceNames.includes(run.source_name)) return false;
     if (!deferredSearch) return true;
     return matchesSearch(deferredSearch, [
@@ -220,7 +221,7 @@ function App() {
   });
 
   const visibleMessages = messages.filter((message) => {
-    const run = runs.find((item) => item.id === message.run_id);
+    const run = runsById.get(message.run_id ?? "");
     if (run && !filteredSourceNames.includes(run.source_name)) return false;
     if (!deferredSearch) return true;
     return matchesSearch(deferredSearch, [
@@ -254,7 +255,7 @@ function App() {
   const selectedWorkflowOutput = selectedWorkflowRun ? outputs.find((output) => output.run_id === selectedWorkflowRun.id) : undefined;
   const selectedSourceRetries = retries.filter((retry) => retry.source_name === selectedSource?.config.name);
   const selectedSourceApprovals = approvals.filter((approval) => {
-    const run = runs.find((item) => item.id === approval.run_id);
+    const run = runsById.get(approval.run_id ?? "");
     return run?.source_name === selectedSource?.config.name;
   });
   const selectedSourceMessages = messages.filter((message) => {
@@ -264,26 +265,6 @@ function App() {
   const selectedSourceEvents = events.filter((event) => event.source === selectedSource?.config.name);
   const selectedAgentApprovals = approvals.filter((approval) => approval.agent_name === selectedAgent?.name);
   const selectedAgentEvents = events.filter((event) => event.run_id === currentRun?.id || event.source === currentRun?.source_name);
-
-  useEffect(() => {
-    if (selectedAgentRuns.length === 0) {
-      if (selectedAgentRunId) setSelectedAgentRunId("");
-      return;
-    }
-    if (!selectedAgentRuns.some((run) => run.id === selectedAgentRunId)) {
-      setSelectedAgentRunId(selectedAgentRuns[0].id);
-    }
-  }, [selectedAgentRunId, selectedAgentRuns]);
-
-  useEffect(() => {
-    if (selectedSourceRuns.length === 0) {
-      if (selectedWorkflowRunId) setSelectedWorkflowRunId("");
-      return;
-    }
-    if (!selectedSourceRuns.some((run) => run.id === selectedWorkflowRunId)) {
-      setSelectedWorkflowRunId(selectedSourceRuns[0].id);
-    }
-  }, [selectedSourceRuns, selectedWorkflowRunId]);
 
   async function handleApproval(requestId: string, action: "approve" | "reject") {
     await resolveApproval(requestId, action);
