@@ -20,10 +20,11 @@ func (s *Service) reconcileStalledRun(ctx context.Context) {
 		if run.LastActivityAt.IsZero() {
 			continue
 		}
-		if time.Since(run.LastActivityAt) < s.agent.StallTimeout.Duration {
+		stallTimeout := s.source.EffectiveStallTimeout(s.agent)
+		if time.Since(run.LastActivityAt) < stallTimeout {
 			continue
 		}
-		s.stopRunAsFailed(ctx, run.ID, fmt.Sprintf("run stalled after %s without observable activity", s.agent.StallTimeout.Duration))
+		s.stopRunAsFailed(ctx, run.ID, fmt.Sprintf("run stalled after %s without observable activity", stallTimeout))
 	}
 }
 

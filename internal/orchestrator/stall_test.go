@@ -76,6 +76,28 @@ func TestReconcileStalledRunIgnoresNonStallStatuses(t *testing.T) {
 	}
 }
 
+func TestReconcileStalledRunRespectsSourceOverride(t *testing.T) {
+	fakeHarness := &testutil.FakeHarness{}
+	svc := newStallTestService(fakeHarness, 50*time.Millisecond)
+	// Source sets a longer stall timeout that should override the agent default.
+	svc.source.StallTimeout = config.Duration{Duration: time.Hour}
+	svc.activeRun = &domain.AgentRun{
+		ID:             "run-1",
+		SourceName:     "test-source",
+		Status:         domain.RunStatusActive,
+		LastActivityAt: time.Now().Add(-time.Second),
+	}
+
+	svc.reconcileStalledRun(context.Background())
+
+	if len(fakeHarness.StopCalls) != 0 {
+		t.Fatalf("stop calls = %+v, want none (source stall_timeout should keep run alive)", fakeHarness.StopCalls)
+	}
+	if len(svc.pendingStops) != 0 {
+		t.Fatalf("pending stops = %+v, want none", svc.pendingStops)
+	}
+}
+
 func newStallTestService(fakeHarness *testutil.FakeHarness, stallTimeout time.Duration) *Service {
 	return &Service{
 		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
