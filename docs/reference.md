@@ -104,6 +104,7 @@ sources:
     max_active_runs: 3             # max concurrent runs for this source
 
     poll_interval: 10s             # override defaults.poll_interval
+    stall_timeout: 2h              # override this source's agent inactivity timeout
     max_attempts: 3                # max retries before marking terminal
     retry_base: 30s                # initial retry delay
     max_retry_backoff: 10m         # max retry delay after exponential backoff
@@ -192,6 +193,7 @@ source_defaults:
       base_url: https://gitlab.com
       token_env: $GITLAB_TOKEN
     repo: https://gitlab.com/group/project.git
+    stall_timeout: 2h              # default for GitLab sources; source field wins
   linear:
     connection:
       token_env: $LINEAR_API_KEY

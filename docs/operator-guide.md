@@ -157,6 +157,8 @@ Stall detection uses the configured inactivity timeout:
 
 - `defaults.stall_timeout` for the shared default
 - `agent_types[].stall_timeout` for a per-agent override
+- `source_defaults.<tracker>.stall_timeout` for tracker-wide source defaults
+- `sources[].stall_timeout` for a specific workflow (highest priority)
 
 If a run stops producing observable output for longer than that window, Maestro stops it and schedules a retry.
 

@@ -149,6 +149,9 @@ func ValidateMVP(cfg *Config) error {
 			return fmt.Errorf("sources[%d].name %q is duplicated", i, source.Name)
 		}
 		sourceNames[source.Name] = struct{}{}
+		if source.StallTimeout.Duration < 0 {
+			return fmt.Errorf("source %q stall_timeout must not be negative", source.Name)
+		}
 
 		if source.Tracker != "gitlab" && source.Tracker != "gitlab-epic" && source.Tracker != "linear" {
 			return fmt.Errorf("source %q requires tracker=gitlab, gitlab-epic, or linear", source.Name)

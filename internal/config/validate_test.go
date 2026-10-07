@@ -71,7 +71,7 @@ func TestValidateMVPRejectsZeroGlobalConcurrency(t *testing.T) {
 	}
 }
 
-func TestValidateMVPAcceptsLinearCodexSource(t *testing.T) {
+func TestValidateMVPRejectsNegativeSourceStallTimeout(t *testing.T) {
 	root := t.TempDir()
 	promptPath := filepath.Join(root, "prompt.md")
 	if err := os.WriteFile(promptPath, []byte("hello"), 0o644); err != nil {
@@ -116,6 +116,11 @@ func TestValidateMVPAcceptsLinearCodexSource(t *testing.T) {
 
 	if err := config.ValidateMVP(cfg); err != nil {
 		t.Fatalf("expected linear/codex mvp config to validate: %v", err)
+	}
+
+	cfg.Sources[0].StallTimeout = config.Duration{Duration: -time.Minute}
+	if err := config.ValidateMVP(cfg); err == nil || !strings.Contains(err.Error(), "stall_timeout") {
+		t.Fatalf("negative source stall_timeout error = %v, want a validation error", err)
 	}
 }
 
