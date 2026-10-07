@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.26+
+- Go 1.26.1+
 - `git`
 - One authenticated harness:
   - `claude`
@@ -439,7 +439,7 @@ Bind it to `127.0.0.1` unless you have a specific reason to expose it more widel
 
 For remote access, put a trusted TLS proxy in front of the API and protect the key. The bearer key grants access to config and control endpoints as well as status data; see [finding S7](../FINDINGS.md).
 
-For Codex, the config path exists, but the current local app-server build did not emit approval requests during live validation on March 15, 2026.
+Codex manual approval depends on the installed app-server emitting approval requests. The live tests in [Testing](../TESTING.md) detect when that path is unavailable.
 
 ## First Demo Path
 
@@ -448,7 +448,7 @@ For the cleanest first demo, use:
 - GitLab + Claude auto, or
 - Linear + Codex auto
 
-Those are the least surprising paths and have full live smoke coverage.
+These examples keep the initial routing simple. Live smoke tests require tracker credentials and an authenticated harness; see [Testing](../TESTING.md).
 
 ## Agent Packs
 

@@ -1,4 +1,6 @@
-# Designing Projects for Agent Execution
+# Designing Projects for Agent Execution (archived)
+
+> General issue-writing notes, not Maestro runtime documentation. For current Maestro behavior, start with the [docs index](../README.md).
 
 How to structure projects, milestones, and issues so that autonomous agents can pick up work, execute it cleanly, and hand it back for review — without getting stuck, going out of scope, or producing unverifiable results.
 

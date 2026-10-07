@@ -32,7 +32,7 @@ import (
 const shutdownTimeout = 5 * time.Second
 const streamTickInterval = time.Second
 
-//go:embed static/index.html static/app
+//go:embed static/app
 var embeddedFrontend embed.FS
 
 type runtimeView interface {

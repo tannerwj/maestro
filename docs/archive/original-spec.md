@@ -1,7 +1,7 @@
 # Maestro Service Specification (Historical)
 
 > **This is the original design document written before implementation.** The code and
-> [README](../README.md) are authoritative for current behavior. This file is preserved
+> [README](../../README.md) are authoritative for current behavior. This file is preserved
 > for historical context on design decisions and trade-offs.
 
 Status: Archived (original: Draft v1)

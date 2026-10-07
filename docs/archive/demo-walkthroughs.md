@@ -1,9 +1,11 @@
-# Demo Walkthroughs
+# Demo walkthroughs (archived)
+
+> Superseded by [Getting Started](../getting-started.md) and the [Operator Guide](../operator-guide.md). Retained as a historical demo checklist; verify commands and example paths before reuse.
 
 ## GitLab + Claude
 
 1. Set `MAESTRO_GITLAB_TOKEN`.
-2. Edit [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
+2. Edit [examples/gitlab-claude-auto.yaml](../../examples/gitlab-claude-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
 3. Create one matching GitLab issue with the configured label.
 4. Make sure that label only matches the one demo issue you want to run. A temporary demo-specific label is the safest option.
 5. Start Maestro:
@@ -30,7 +32,7 @@ make cleanup-workspaces CONFIG=examples/gitlab-claude-auto.yaml
 ## Linear + Codex
 
 1. Set `MAESTRO_LINEAR_TOKEN`.
-2. Edit [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
+2. Edit [examples/linear-codex-auto.yaml](../../examples/linear-codex-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
 3. Create one matching Linear issue in the configured project/state.
 4. Make sure the filter only matches that one demo issue. A temporary demo-specific label is the safest option.
 5. Start Maestro:
@@ -57,7 +59,7 @@ make cleanup-workspaces CONFIG=examples/linear-codex-auto.yaml
 ## Multi-Source
 
 1. Set both `MAESTRO_GITLAB_TOKEN` and `MAESTRO_LINEAR_TOKEN`.
-2. Copy [examples/multi-source-claude-auto.yaml](../examples/multi-source-claude-auto.yaml) and update the tracker fields.
+2. Copy [examples/multi-source-claude-auto.yaml](../../examples/multi-source-claude-auto.yaml) and update the tracker fields.
 3. Prepare three isolated work items:
    - one GitLab project issue
    - one GitLab epic with one linked child issue
@@ -78,7 +80,7 @@ make inspect-state CONFIG=examples/multi-source-claude-auto.yaml
 
 For a denser real-world starting point with shared defaults and six sources, use:
 
-- [examples/many-sources-claude-auto.yaml](../examples/many-sources-claude-auto.yaml)
+- [examples/many-sources-claude-auto.yaml](../../examples/many-sources-claude-auto.yaml)
 
 ## Notes
 

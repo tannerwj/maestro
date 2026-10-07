@@ -2,7 +2,7 @@
 
 **Your issues, your agents, one control room.** Maestro runs Claude Code and Codex against GitLab or Linear work items from a single machine. It schedules runs, prepares and reuses workspaces, routes operator requests, and records what happened. The agent remains responsible for code changes, pull requests, and task-specific decisions.
 
-[Get started](docs/getting-started.md) · [Configuration reference](docs/reference.md) · [Operator guide](docs/operator-guide.md) · [Security findings](FINDINGS.md)
+[Get started](docs/getting-started.md) · [All documentation](docs/README.md) · [Operator guide](docs/operator-guide.md) · [Security findings](FINDINGS.md)
 
 ![Maestro demo dashboard with workflows, an approval request, and operator activity](docs/assets/dashboard-demo.png)
 
@@ -30,7 +30,7 @@ Maestro is a local orchestration daemon. A source pairs one tracker filter with 
 
 ## Try it
 
-You need Go 1.26+, `git`, one tracker token, and the `claude` or `codex` CLI for your chosen example.
+You need Go 1.26.1+, `git`, one tracker token, and the `claude` or `codex` CLI for your chosen example.
 
 ```bash
 git clone https://github.com/tannerwj/maestro.git
@@ -61,16 +61,14 @@ Agent processes receive a curated environment plus explicit `agent_types[].env` 
 | Guide | Use it for |
 |---|---|
 | [Getting Started](docs/getting-started.md) | First GitLab or Linear setup and a first run |
-| [Configuration reference](docs/reference.md) | YAML fields, agent packs, lifecycle routing, CLI, and API |
+| [Configuration reference](docs/reference.md) | Annotated YAML and links to the config schema |
 | [Agents](docs/agents.md) | Packs, harnesses, environment, Docker, and prompts |
 | [Trackers](docs/trackers.md) | GitLab projects and epics, Linear, and writeback |
 | [Operator Guide](docs/operator-guide.md) | TUI, dashboard, recovery, and troubleshooting |
-| [Demo Walkthroughs](docs/demo-walkthroughs.md) | Guided flows for each tracker and harness |
 | [Testing](TESTING.md) | Hermetic and live checks |
 | [Security and performance findings](FINDINGS.md) | Review evidence and remaining risks |
-| [Future Improvements](docs/future-improvements.md) | Planned and deferred capabilities |
 
-`docs/original-spec.md` is the original design proposal, preserved for historical context; use the guides above for current behavior.
+The [docs index](docs/README.md) also links examples. Historical design notes and older demo checklists live in the [archive](docs/archive/README.md).
 
 ## Development
 

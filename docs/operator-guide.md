@@ -67,7 +67,7 @@ The TUI now shows:
 Workspaces are preserved across retries instead of being re-cloned. When `PrepareClone` runs, it
 checks whether the workspace already contains a `.git` directory:
 
-- **Healthy repo**: fetches all remotes and checks out the branch. No re-clone.
+- **Healthy repo**: verifies its origin, fetches it, and checks out the branch. No re-clone.
 - **Corrupt repo** (e.g., `git rev-parse --git-dir` fails): removes and re-clones.
 - **Transient failure** (fetch or checkout fails, but repo is healthy): preserves the workspace and
   returns an error. This avoids destroying local work on a temporary network or auth issue.
@@ -98,13 +98,12 @@ Operational notes:
 
 ## Run Log Persistence
 
-After each run completes (success or failure), agent stdout and stderr are saved to:
+Agent stdout and stderr stream to private files during each run and remain available after completion:
 
 - `{state.dir}/runs/{run-id}/stdout.log`
 - `{state.dir}/runs/{run-id}/stderr.log`
 
-These persist across restarts and are useful for post-mortem debugging. Only runs that produced output
-generate log files.
+Each stream is capped at 16 MiB with a truncation marker. Files persist across restarts and are useful for post-mortem debugging. Raw output may contain secrets printed by the agent, so keep the state directory private.
 
 ## State And Logs
 
@@ -212,7 +211,7 @@ The first API slice is read-mostly with approval actions:
 
 The built-in dashboard at `/` uses those resource endpoints directly and listens to `/api/v1/stream` over Server-Sent Events so the page refreshes on runtime changes without a fixed polling loop. The browser UI is dark by default, has a light theme toggle, and supports source/run selection, quick filtering, sorting, retries, approvals, and a context-aware event timeline.
 
-Loopback binds (`127.0.0.1`, `localhost`, `::1`) do not require API auth. Non-loopback binds require `server.api_key`. When auth is enabled, API clients must send `Authorization: Bearer <key>`, and the dashboard can be opened once with `?api_key=<key>` so it can store the key in session storage.
+Loopback binds (`127.0.0.1`, `localhost`, `::1`) do not require API auth. Non-loopback binds use `server.api_key` or generate an ephemeral key at startup. When auth is enabled, API clients must send `Authorization: Bearer <key>`, and the dashboard can be opened once with `?api_key=<key>` so it can store the key in session storage.
 
 For remote access, terminate TLS at a trusted proxy and protect the key: it allows config and run-control operations, not just viewing status. See [finding S7](../FINDINGS.md).
 
