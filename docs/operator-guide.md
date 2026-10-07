@@ -212,6 +212,8 @@ The built-in dashboard at `/` uses those resource endpoints directly and listens
 
 Loopback binds (`127.0.0.1`, `localhost`, `::1`) do not require API auth. Non-loopback binds require `server.api_key`. When auth is enabled, API clients must send `Authorization: Bearer <key>`, and the dashboard can be opened once with `?api_key=<key>` so it can store the key in session storage.
 
+For remote access, terminate TLS at a trusted proxy and protect the key: it allows config and run-control operations, not just viewing status. See [finding S7](../FINDINGS.md).
+
 ## Slack Operations
 
 Slack is now available as a communication channel for workflows that need remote approval handling.
@@ -385,4 +387,4 @@ Hooks behave unexpectedly:
 Codex manual approval does not appear:
 
 - this is a known limitation of the currently tested app-server behavior
-- use Claude manual approval if you need a live approval demo today
+- Claude can demonstrate the approval UI, but an approved turn resumes with `bypassPermissions`. Do not treat that as per-action authorization; see [finding S2](../FINDINGS.md).

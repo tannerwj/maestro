@@ -253,16 +253,6 @@ stream events, frontend renders distinct indicators.
 
 ---
 
-### 📡 SSE Streaming for Web Dashboard
-
-Server-Sent Events endpoint pushing snapshot updates every 1-2 seconds to all connected
-web clients.
-
-**Why**: Simpler than WebSocket for read-only dashboards, works through more
-proxies/firewalls. Could coexist with WebSocket for bidirectional actions (approvals).
-
----
-
 ### 🔌 Late-Subscriber Catch-Up
 
 When a client connects mid-run, immediately send a snapshot of current state including
@@ -516,23 +506,27 @@ of environment variables.
 
 ---
 
-### 🔒 Network Filtering Proxy
+### 🔒 Enforced Container Egress Policy
 
-HTTP/HTTPS proxy outside the agent container allowing only configured domains and
-blocking everything else.
+Docker `network_policy.mode: allowlist` currently sets proxy variables for HTTP/HTTPS
+clients on bridge networking. Direct sockets can bypass the proxy.
 
-**Why**: Prevents data exfiltration by prompt-injected agents. More flexible than
-air-gapped `NetworkMode: "none"`.
+**Why**: A network boundary must cover direct connections before the allowlist can be
+treated as an isolation control. See [finding S3](../FINDINGS.md).
 
-**Config**: `sandbox.network.mode: filtered` + `allowed_domains` list.
+**To ship**: Enforce egress at the namespace or daemon layer and verify it with a
+Docker-backed bypass test. Until then, use `network_policy.mode: none` or external
+egress controls when isolation is required.
 
 ---
 
-### 🔒 Web Dashboard Authentication
+### 🔒 Stronger Remote Dashboard Authentication
 
-Auth for the web API/dashboard. Currently localhost-only.
+Non-loopback binds already require a bearer API key. The remote deployment path still
+needs TLS, key lifecycle controls, and narrower permissions for read-only users.
 
-**Why**: Required for remote access. Options: bearer token, OAuth2 proxy, mTLS.
+**Why**: The current key grants config and run-control access along with status reads.
+See [finding S7](../FINDINGS.md).
 
 ---
 

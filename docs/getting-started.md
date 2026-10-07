@@ -53,7 +53,7 @@ preserved workspace/home/cache state.
 export MAESTRO_GITLAB_TOKEN=...
 ```
 
-4. Copy [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) and update:
+4. Edit [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) in place, or copy it and update `agent_packs_dir` to point to your packs. Set:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.base_url`
@@ -78,7 +78,7 @@ make run CONFIG=examples/gitlab-claude-auto.yaml
 export MAESTRO_GITLAB_TOKEN=...
 ```
 
-5. Copy [examples/gitlab-epic-claude-auto.yaml](../examples/gitlab-epic-claude-auto.yaml) and update:
+5. Edit [examples/gitlab-epic-claude-auto.yaml](../examples/gitlab-epic-claude-auto.yaml) in place, or copy it and update `agent_packs_dir` to point to your packs. Set:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.base_url`
@@ -92,7 +92,7 @@ export MAESTRO_GITLAB_TOKEN=...
 6. Run:
 
 ```bash
-go run ./cmd/maestro run --config /path/to/maestro.yaml
+go run ./cmd/maestro run --config examples/gitlab-epic-claude-auto.yaml
 ```
 
 If you want the local web/API surface too, add:
@@ -116,7 +116,7 @@ Then open [http://127.0.0.1:8742](http://127.0.0.1:8742).
 export MAESTRO_LINEAR_TOKEN=...
 ```
 
-3. Copy [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) and update:
+3. Edit [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) in place, or copy it and update `agent_packs_dir` to point to your packs. Set:
    - `agent_packs_dir` if you move the built-in packs
    - `user`
    - `sources[0].connection.project` with the exact project name or GraphQL project ID, or use `sources[0].project_url` with a Linear project URL instead
@@ -129,7 +129,7 @@ Do not embed credentials directly in `repo` URLs. Use `connection.token_env` and
 4. Run:
 
 ```bash
-go run ./cmd/maestro run --config /path/to/maestro.yaml
+go run ./cmd/maestro run --config examples/linear-codex-auto.yaml
 ```
 
 If you want to containerize only the harness process, see the Docker examples in
@@ -324,7 +324,7 @@ maestro cleanup workspaces --config /path/to/maestro.yaml --dry-run
 
 ## Manual Approval
 
-Manual approval is now supported for Claude. Use one of the `*-manual.yaml` samples and run with the TUI enabled so you can approve or reject requests:
+Manual approval requests can be routed through the TUI, but Claude's current adapter resumes an approved turn with `bypassPermissions`. Approval does not gate every later tool action in that turn. Do not use it as a per-action security boundary; see [finding S2](../FINDINGS.md). For a workflow demonstration, use one of the `*-manual.yaml` samples and run with the TUI enabled:
 
 - `tab` switches focus between sources, active runs, retries, and approvals
 - `a` approves the first pending request
@@ -420,7 +420,7 @@ Slack app checklist:
 
 ## Local Web/API
 
-The first web/API slice is local-only and intentionally narrow. When `server.enabled` is true, Maestro serves:
+When `server.enabled` is true, Maestro serves a dashboard and API, including:
 
 - a built-in dashboard at `/`
 - `GET /healthz`
@@ -437,6 +437,8 @@ The first web/API slice is local-only and intentionally narrow. When `server.ena
 
 Bind it to `127.0.0.1` unless you have a specific reason to expose it more widely. Loopback binds do not require API auth. If you expose the server on a non-loopback host, set `server.api_key` or let Maestro generate an ephemeral one at startup. API clients then use `Authorization: Bearer <key>`, and the dashboard can be opened once with `?api_key=<key>` so it can store the key in session storage. The built-in dashboard uses Server-Sent Events from `/api/v1/stream` for live updates, defaults to dark theme, and includes a light theme toggle along with browser-side filtering and sorting controls.
 
+For remote access, put a trusted TLS proxy in front of the API and protect the key. The bearer key grants access to config and control endpoints as well as status data; see [finding S7](../FINDINGS.md).
+
 For Codex, the config path exists, but the current local app-server build did not emit approval requests during live validation on March 15, 2026.
 
 ## First Demo Path
@@ -444,7 +446,7 @@ For Codex, the config path exists, but the current local app-server build did no
 For the cleanest first demo, use:
 
 - GitLab + Claude auto, or
-- Linear + Claude auto
+- Linear + Codex auto
 
 Those are the least surprising paths and have full live smoke coverage.
 

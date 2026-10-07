@@ -1,6 +1,6 @@
 # Security and performance findings
 
-Reviewed at `f6a77da38e1eaabe1d27b83a6bc9039032c3d5fd` on 2026-10-02. The full evidence, threat model, benchmarks, and original reproduction commands are in [the review](review/security-performance-2026-10-02.md). This file tracks remediation on `codex/security-performance-remediation`.
+Reviewed at `f6a77da38e1eaabe1d27b83a6bc9039032c3d5fd` on 2026-10-02. The full evidence, threat model, benchmarks, and original reproduction commands are in [the review](review/security-performance-2026-10-02.md). This file tracks the remediation developed on `codex/security-performance-remediation` and the remaining work.
 
 | ID | Severity | Status | Finding and disposition |
 |---|---|---|---|

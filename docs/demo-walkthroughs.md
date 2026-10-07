@@ -3,7 +3,7 @@
 ## GitLab + Claude
 
 1. Set `MAESTRO_GITLAB_TOKEN`.
-2. Copy [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) and update the tracker fields.
+2. Edit [examples/gitlab-claude-auto.yaml](../examples/gitlab-claude-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
 3. Create one matching GitLab issue with the configured label.
 4. Make sure that label only matches the one demo issue you want to run. A temporary demo-specific label is the safest option.
 5. Start Maestro:
@@ -27,10 +27,10 @@ make reset-issue CONFIG=examples/gitlab-claude-auto.yaml ISSUE=group/project#123
 make cleanup-workspaces CONFIG=examples/gitlab-claude-auto.yaml
 ```
 
-## Linear + Claude
+## Linear + Codex
 
 1. Set `MAESTRO_LINEAR_TOKEN`.
-2. Copy [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) and update the tracker fields.
+2. Edit [examples/linear-codex-auto.yaml](../examples/linear-codex-auto.yaml) in place and update the tracker fields. If you copy it elsewhere, adjust `agent_packs_dir` and the command paths below.
 3. Create one matching Linear issue in the configured project/state.
 4. Make sure the filter only matches that one demo issue. A temporary demo-specific label is the safest option.
 5. Start Maestro:

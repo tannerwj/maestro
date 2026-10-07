@@ -269,6 +269,7 @@ Authentication patterns:
 - raw `docker.security.*` fields apply on top of the selected preset
 - if `HOME` is not provided explicitly, Maestro gives the container a writable local `HOME` automatically
 - `docker.network_policy.mode: allowlist` is intentionally scoped to HTTP/HTTPS egress through a Maestro-managed proxy; it is not a general-purpose firewall product
+- Direct sockets can bypass that proxy on bridge networking. Use `network_policy.mode: none` or external egress controls when network isolation is required; see [finding S3](../FINDINGS.md).
 - allowlist mode rejects conflicting proxy env configuration (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, including lowercase variants) because Maestro owns those env vars in that mode
 - allowlist mode requires bridge networking; `maestro doctor` verifies support for the required Docker host-gateway resolution where possible
 - `maestro doctor` also shows the effective Docker env injections and read-only secret/tool mounts each agent will receive
