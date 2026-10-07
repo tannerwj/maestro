@@ -59,7 +59,7 @@ export MAESTRO_GITLAB_TOKEN=...
    - `sources[0].connection.base_url`
    - `sources[0].connection.project`
    - `sources[0].filter`
-   - `defaults.stall_timeout` or `agent_types[0].stall_timeout` if you want a different inactivity timeout
+   - `sources[0].stall_timeout` if this workflow needs a different inactivity timeout
 
 5. Run:
 
@@ -87,7 +87,7 @@ export MAESTRO_GITLAB_TOKEN=...
    - `sources[0].epic_filter`
      - optionally `sources[0].epic_filter.iids` if you want to pin the source to exact epic IIDs
    - `sources[0].issue_filter`
-   - `defaults.stall_timeout` or `agent_types[0].stall_timeout` if you want a different inactivity timeout
+   - `sources[0].stall_timeout` if this workflow needs a different inactivity timeout
 
 6. Run:
 
@@ -122,7 +122,7 @@ export MAESTRO_LINEAR_TOKEN=...
    - `sources[0].connection.project` with the exact project name or GraphQL project ID, or use `sources[0].project_url` with a Linear project URL instead
    - `sources[0].repo`
    - `sources[0].filter`
-   - `defaults.stall_timeout` or `agent_types[0].stall_timeout` if you want a different inactivity timeout
+   - `sources[0].stall_timeout` if this workflow needs a different inactivity timeout
 
 Do not embed credentials directly in `repo` URLs. Use `connection.token_env` and let Maestro handle clone auth.
 
@@ -497,7 +497,7 @@ Hook commands receive:
 - `MAESTRO_RUN_STATUS`
 - `MAESTRO_WORKSPACE_PATH`
 
-`defaults.stall_timeout` sets the inactivity timeout for runs. You can override it per agent with `agent_types[].stall_timeout`.
+`defaults.stall_timeout` sets the inactivity timeout for runs. `agent_types[].stall_timeout` overrides it per agent; `sources[].stall_timeout` overrides both for one workflow. `source_defaults.<tracker>.stall_timeout` can supply a tracker-wide value when the source leaves it unset. The effective value must be positive.
 
 Agent processes do not inherit the full parent shell environment. Maestro passes a curated runtime
 baseline such as `PATH`, `HOME`, locale/XDG/temp vars, and common proxy/cert vars, then applies any
