@@ -64,10 +64,10 @@ Important differences from project issues:
 - if you use the legacy `filter` field with `gitlab-epic`, Maestro treats it as an epic bucket filter plus child-issue assignee/state fallback for backward compatibility
 - `repo` must be a plain repo URL without embedded credentials; use `connection.token_env` for auth
 
-Live validation status:
+Verification:
 
-- the repo ships unit coverage and sample config for epic mode
-- live epic polling, writeback, and reconciliation are validated against an epic-capable GitLab group
+- the hermetic suite covers epic filtering, linked issues, and lifecycle behavior
+- live checks require credentials and a GitLab group with epics enabled; see [Testing](../TESTING.md)
 
 Sample config: [examples/gitlab-epic-claude-auto.yaml](../examples/gitlab-epic-claude-auto.yaml)
 ## Linear Project Issues

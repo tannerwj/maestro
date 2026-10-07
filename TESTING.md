@@ -396,7 +396,7 @@ go test ./internal/harness/codex -run TestLiveCodexHarnessContinuationDocker -v
 ## Notes
 
 - The default `go test ./...` suite now covers persisted `runs.json` state, approval history persistence, failed-run retries, restart recovery of an interrupted active run, tracker-label-based reconciliation stops, and the operator recovery helpers for run inspection, issue reset, and workspace cleanup.
-- The live Codex manual-approval tests currently skip if the installed Codex app-server never emits an approval request under `on-request`. That behavior was observed in the current local environment on March 15, 2026.
+- The live Codex manual-approval tests skip if the installed Codex app-server never emits an approval request under `on-request`.
 - The live Codex message-request test currently skips if the installed Codex session never emits a native `request_user_input` call for the prompt within 60 seconds.
 - The live Codex harness currently uses mixed protocol enums: `thread/start` expects kebab-case approval/sandbox values, while `turn/start` sandbox policy values still use camelCase. If live Codex startup regresses, check `internal/harness/codex/adapter.go` first.
 - Real binary smoke runs remain manual because they require a configured tracker issue plus an authenticated local CLI session.

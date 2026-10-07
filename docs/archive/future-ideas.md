@@ -1,4 +1,6 @@
-# Future Improvements
+# Future ideas (archived)
+
+> Historical brainstorming, not a committed roadmap. Some statements and proposals may be outdated. Use the [current guides](../README.md) and [findings](../../FINDINGS.md) for shipped behavior and open risks.
 
 Potential features, improvements, and extensions for Maestro. Each entry covers what it
 is, why it matters, and what's needed to ship.
@@ -512,7 +514,7 @@ Docker `network_policy.mode: allowlist` currently sets proxy variables for HTTP/
 clients on bridge networking. Direct sockets can bypass the proxy.
 
 **Why**: A network boundary must cover direct connections before the allowlist can be
-treated as an isolation control. See [finding S3](../FINDINGS.md).
+treated as an isolation control. See [finding S3](../../FINDINGS.md).
 
 **To ship**: Enforce egress at the namespace or daemon layer and verify it with a
 Docker-backed bypass test. Until then, use `network_policy.mode: none` or external
@@ -526,7 +528,7 @@ Non-loopback binds already require a bearer API key. The remote deployment path 
 needs TLS, key lifecycle controls, and narrower permissions for read-only users.
 
 **Why**: The current key grants config and run-control access along with status reads.
-See [finding S7](../FINDINGS.md).
+See [finding S7](../../FINDINGS.md).
 
 ---
 

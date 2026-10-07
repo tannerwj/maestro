@@ -1144,7 +1144,14 @@ func TestServiceAppliesGlobalLifecycleDefaultsWhenSourceHooksAreUnset(t *testing
 	}()
 
 	waitFor(t, 2*time.Second, func() bool {
-		return len(fakeHarness.StartedRuns) == 1 && svc.Snapshot().ActiveRun == nil
+		if svc.Snapshot().ActiveRun != nil {
+			return false
+		}
+		issue, err := fakeTracker.Get(context.Background(), "gitlab:team/project#59a")
+		return err == nil &&
+			!slicesContains(issue.Labels, "maestro:active") &&
+			!slicesContains(issue.Labels, "maestro:coding") &&
+			slicesContains(issue.Labels, "maestro:review")
 	})
 
 	issue, err := fakeTracker.Get(context.Background(), "gitlab:team/project#59a")
@@ -1164,6 +1171,9 @@ func TestServiceAppliesGlobalLifecycleDefaultsWhenSourceHooksAreUnset(t *testing
 	cancel()
 	if err := <-errCh; err != nil {
 		t.Fatalf("run service: %v", err)
+	}
+	if len(fakeHarness.StartedRuns) != 1 {
+		t.Fatalf("started runs = %d, want 1", len(fakeHarness.StartedRuns))
 	}
 }
 

@@ -39,7 +39,7 @@ Important practical boundaries:
 - Each source can run more than one issue at a time via `sources[].max_active_runs`; effective concurrency is still capped by the per-agent and global limiters.
 - State persistence includes rolling backups and corrupt-file fallback; unreadable `runs.json` is archived and recovery continues with empty state.
 - Run stdout/stderr is persisted under `state.dir/runs/<run-id>/`.
-- Loopback web/API binds do not require auth. Non-loopback binds require `server.api_key`.
+- Loopback web/API binds do not require auth. Non-loopback binds use `server.api_key` or a generated ephemeral API key.
 - Slack DM mode authorizes the configured DM user. Slack channel mode requires explicit `authorized_user_ids` / `authorized_user_ids_env`.
 - `maestro --dry-run` polls once, evaluates eligibility, previews workspace choice/lifecycle actions, and renders prompts without launching harnesses or mutating state.
 - `maestro doctor` includes route-collision diagnostics for overlapping or ambiguous source routing.
@@ -58,7 +58,7 @@ maestro doctor --config ...  # config + binary preflight
 
 ## Code conventions
 
-- Go 1.26+. Standard library preferred over external deps.
+- Go 1.26.1+. Standard library preferred over external deps.
 - `internal/` packages are not importable outside the module.
 - Interfaces defined in the consumer package (e.g., `harness.Harness`, `tracker.Tracker`).
 - Errors wrapped with `fmt.Errorf("context: %w", err)`. No bare `err` returns.
@@ -93,7 +93,7 @@ agents/<pack-name>/
 - `prompt.md` uses Go `text/template` syntax. Available data: `.Agent`, `.Issue`, `.User`, `.Source`, `.Attempt`, `.AgentName`, `.OperatorInstruction`
 - Packs are referenced from `maestro.yaml` via `agent_types[].agent_pack` (name, path, or `repo:` prefix)
 - Config YAML overrides pack defaults. tools/skills/context_files merge (not replace).
-- `approval_policy`: `auto` (no approval) or `manual` (all actions require approval)
+- `approval_policy`: `auto` or `manual`. Manual routes requests emitted by the harness; Claude manual mode is not a per-action security boundary after approval (see `FINDINGS.md`, S2).
 - Codex-native hook config belongs in `agents/<pack>/codex/` and is copied into workspace `.codex/`; do not model Codex hooks as Maestro shell hooks.
 
 ## Config
